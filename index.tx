@@ -1,0 +1,5123 @@
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mysql from 'mysql2';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*', // Replace with frontend URL if in production
+  },
+});
+
+app.use(cors());
+app.use(express.json());
+
+// ✅ Create MySQL connection
+const db = mysql.createConnection({
+  host: '',     // Or your DB host
+  user: '',          // Your MySQL user
+  password: '',          // Your MySQL password
+  database: 'pineappleby',   // Your DB name
+});
+
+// ✅ Connect to MySQL
+db.connect((err) => {
+  if (err) {
+    console.error('❌ MySQL connection failed:', err);
+  } else {
+    console.log('✅ MySQL connected');
+  }
+});
+
+// ✅ Real-time messaging logic
+io.on('connection', (socket) => {
+  console.log('🟢 User connected');
+
+  socket.on('send_message', (data) => {
+    const { text, time, senderId } = data;
+
+    // Save message to MySQL
+    db.query(
+      'INSERT INTO messages (text, time, sender_id) VALUES (?, ?, ?)',
+      [text, time, senderId],
+      (err, result) => {
+        if (err) {
+          console.error('❌ Error inserting message:', err);
+        } else {
+          io.emit('receive_message', { ...data, id: result.insertId });
+        }
+      }
+    );
+  });
+
+  socket.on('disconnect', () => {
+    console.log('🔴 User disconnected');
+  });
+});
+
+// ✅ REST API to fetch chat history
+app.get('/messages', (req, res) => {
+  db.query('SELECT * FROM messages ORDER BY id DESC LIMIT 50', (err, results) => {
+    if (err) {
+      res.status(500).json({ error: 'Failed to fetch messages' });
+    } else {
+      res.json(results.reverse()); // reverse for ascending order
+    }
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+
+const app = express();
+const server = http.createServer(app);
+
+app.use(cors());
+app.use(express.json());
+
+// ✅ MongoDB Connection
+mongoose.connect('mongodb://127.0.0.1:27017/chatapp', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+
+// ✅ Message Schema
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: String,
+    status: {
+      type: String,
+      enum: ['sent', 'delivered', 'seen'],
+      default: 'sent',
+    },
+    isRead: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { timestamps: true }
+);
+
+const Message = mongoose.model('Message', messageSchema);
+
+// ✅ Socket.IO Setup
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+// ✅ Socket.IO Events
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  // ✅ Send Message
+  socket.on('send_message', async (data) => {
+    try {
+      const { senderId, receiverId, text } = data;
+      const newMessage = new Message({ senderId, receiverId, text });
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      io.emit('receive_message', {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: 'sent',
+      });
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  // ✅ Delivered
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      await Message.findByIdAndUpdate(messageId, { status: 'delivered' });
+      io.emit('message_status_update', { messageId, status: 'delivered' });
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  // ✅ Seen
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      await Message.findByIdAndUpdate(messageId, { status: 'seen', isRead: true });
+      io.emit('message_status_update', { messageId, status: 'seen' });
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  // ✅ Mark all messages as read in conversation
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ✅ Get Messages Between Two Users
+app.post('/api/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+  try {
+    const messages = await Message.find({
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId },
+      ],
+    }).sort({ createdAt: 1 });
+
+    const formattedMessages = messages.map((msg) => ({
+      _id: msg._id,
+      senderId: msg.senderId,
+      receiverId: msg.receiverId,
+      text: msg.text,
+      status: msg.status,
+      isRead: msg.isRead,
+      timestamp: msg.createdAt,
+      time: msg.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    }));
+
+    res.json(formattedMessages);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// ✅ Get Recent Chats Like WhatsApp
+app.post('/api/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const messages = await Message.find({
+      $or: [{ senderId: userId }, { receiverId: userId }],
+    }).sort({ createdAt: -1 });
+
+    const uniquePairsMap = new Map();
+
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!uniquePairsMap.has(participants)) {
+        uniquePairsMap.set(participants, {
+          chatWith: msg.senderId === userId ? msg.receiverId : msg.senderId,
+          lastMessage: msg.text,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          timestamp: msg.createdAt,
+        });
+      }
+    });
+
+    res.json(Array.from(uniquePairsMap.values()));
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+// ✅ Get Unread Message Count Per Sender
+app.post('/api/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    const unread = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      {
+        $group: {
+          _id: '$senderId',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const unreadMap = {};
+    unread.forEach((item) => {
+      unreadMap[item._id] = item.count;
+    });
+
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+// ✅ Get All Unique Chat Pairs (Optional)
+app.get('/api/userPairs', async (req, res) => {
+  try {
+    const messages = await Message.find({}).sort({ createdAt: 1 });
+    const pairChatsMap = new Map();
+
+    messages.forEach((msg) => {
+      const key = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!pairChatsMap.has(key)) {
+        pairChatsMap.set(key, {
+          senderId: msg.senderId,
+          receiverId: msg.receiverId,
+          messages: [],
+        });
+      }
+      pairChatsMap.get(key).messages.push({
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        status: msg.status,
+        isRead: msg.isRead,
+        timestamp: msg.createdAt,
+        time: msg.createdAt.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      });
+    });
+
+    res.json(Array.from(pairChatsMap.values()));
+  } catch (err) {
+    console.error('❌ Failed to get chat pairs:', err.message);
+    res.status(500).json({ error: 'Failed to get user pairs with messages' });
+  }
+});
+
+// ✅ Start Server
+server.listen(3000, () => {
+  console.log('🚀 Server running at http://localhost:3000');
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import connectDB from './db/connectDB.js';
+import router from './routes/follow.js';
+const app = express();
+const server = http.createServer(app);
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+connectDB()
+app.use('/api',router)
+// ✅ Message Schema
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: String,
+    status: {
+      type: String,
+      enum: ['sent', 'delivered', 'seen'],
+      default: 'sent',
+    },
+    isRead: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { timestamps: true }
+);
+const Message = mongoose.model('Message', messageSchema);
+
+
+// ✅ Socket.IO Setup
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  socket.on('send_message', async (data) => {
+    try {
+      const { senderId, receiverId, text } = data;
+      const newMessage = new Message({ senderId, receiverId, text });
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      io.emit('receive_message', {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: 'sent',
+      });
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      await Message.findByIdAndUpdate(messageId, { status: 'delivered' });
+      io.emit('message_status_update', { messageId, status: 'delivered' });
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      await Message.findByIdAndUpdate(messageId, {
+        status: 'seen',
+        isRead: true,
+      });
+      io.emit('message_status_update', { messageId, status: 'seen' });
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ✅ Get Messages with Grouping like WhatsApp
+app.post('/api/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+
+  const formatTime = (date) => {
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatDateLabel = (date) => {
+    const now = new Date();
+    const msgDate = new Date(date);
+
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const thisWeekStart = new Date();
+    thisWeekStart.setDate(today.getDate() - today.getDay());
+
+    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const thisYearStart = new Date(today.getFullYear(), 0, 1);
+
+    const isToday = msgDate.toDateString() === today.toDateString();
+    const isYesterday = msgDate.toDateString() === yesterday.toDateString();
+    const isThisWeek = msgDate >= thisWeekStart;
+    const isThisMonth = msgDate >= thisMonthStart;
+    const isThisYear = msgDate >= thisYearStart && msgDate < thisMonthStart;
+    const isPreviousYears = msgDate < thisYearStart;
+
+    if (isToday) return 'Today';
+    if (isYesterday) return 'Yesterday';
+    if (isThisWeek) return 'This Week';
+    if (isThisMonth) return 'This Month';
+    if (isThisYear) {
+      return msgDate.toLocaleDateString(undefined, { month: 'long' });
+    }
+    if (isPreviousYears) {
+      return msgDate.toLocaleDateString(undefined, {
+        month: 'short',
+        year: 'numeric',
+      });
+    }
+
+    return msgDate.toLocaleDateString(); // fallback
+  };
+
+  try {
+    const messages = await Message.find({
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId },
+      ],
+    }).sort({ createdAt: 1 });
+
+    const groupedMessages = [];
+    let currentLabel = '';
+
+    messages.forEach((msg) => {
+      const label = formatDateLabel(msg.createdAt);
+
+      if (label !== currentLabel) {
+        groupedMessages.push({
+          type: 'label',
+          label,
+        });
+        currentLabel = label;
+      }
+
+      groupedMessages.push({
+        type: 'message',
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        status: msg.status,
+        isRead: msg.isRead,
+        timestamp: msg.createdAt,
+        time: formatTime(msg.createdAt),
+      });
+    });
+
+    res.json(groupedMessages);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// ✅ Get Recent Chats Like WhatsApp
+app.post('/api/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const messages = await Message.find({
+      $or: [{ senderId: userId }, { receiverId: userId }],
+    }).sort({ createdAt: -1 });
+
+    const uniquePairsMap = new Map();
+
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!uniquePairsMap.has(participants)) {
+        uniquePairsMap.set(participants, {
+          chatWith: msg.senderId === userId ? msg.receiverId : msg.senderId,
+          lastMessage: msg.text,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          timestamp: msg.createdAt,
+        });
+      }
+    });
+
+    res.json(Array.from(uniquePairsMap.values()));
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+// ✅ Get Unread Message Count Per Sender
+app.post('/api/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    const unread = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      {
+        $group: {
+          _id: '$senderId',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const unreadMap = {};
+    unread.forEach((item) => {
+      unreadMap[item._id] = item.count;
+    });
+
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+// ✅ Start Server
+server.listen(3000, () => {
+  console.log('🚀 Server running at http://localhost:3000');
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import connectDB from './db/connectDB.js';
+import followRouter from './routes/follow.js';
+
+const app = express();
+const server = http.createServer(app);
+connectDB();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// ✅ Message Schema
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: String,
+    status: {
+      type: String,
+      enum: ['sent', 'delivered', 'seen'],
+      default: 'sent',
+    },
+    isRead: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { timestamps: true }
+);
+const Message = mongoose.model('Message', messageSchema);
+
+// ✅ Socket.IO Setup
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+app.use('/api', followRouter(io));
+
+
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  socket.on('send_message', async (data) => {
+    try {
+      const { senderId, receiverId, text } = data;
+      const newMessage = new Message({ senderId, receiverId, text });
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      io.emit('receive_message', {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: 'sent',
+      });
+
+      const unreadCount = await Message.countDocuments({
+        receiverId,
+        senderId,
+        isRead: false,
+      });
+
+      io.emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: unreadCount,
+      });
+
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      await Message.findByIdAndUpdate(messageId, { status: 'delivered' });
+      io.emit('message_status_update', { messageId, status: 'delivered' });
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(messageId, {
+        status: 'seen',
+        isRead: true,
+      });
+
+      io.emit('message_status_update', { messageId, status: 'seen' });
+
+      const unreadCount = await Message.countDocuments({
+        receiverId: updated.receiverId,
+        senderId: updated.senderId,
+        isRead: false,
+      });
+
+      io.emit('unread_count_update', {
+        userId: updated.receiverId,
+        from: updated.senderId,
+        count: unreadCount,
+      });
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+
+      io.emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: 0,
+      });
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ✅ Get Messages with Grouping
+app.post('/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+
+  const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const formatDateLabel = (date) => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const msgDate = new Date(date);
+
+    if (msgDate.toDateString() === today.toDateString()) return 'Today';
+    if (msgDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+
+    return msgDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: msgDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+    });
+  };
+
+  try {
+    const messages = await Message.find({
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId },
+      ],
+    }).sort({ createdAt: 1 });
+
+    const groupedMessages = [];
+    let currentLabel = '';
+
+    messages.forEach((msg) => {
+      const label = formatDateLabel(msg.createdAt);
+      if (label !== currentLabel) {
+        groupedMessages.push({ type: 'label', label });
+        currentLabel = label;
+      }
+
+      groupedMessages.push({
+        type: 'message',
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        status: msg.status,
+        isRead: msg.isRead,
+        timestamp: msg.createdAt,
+        time: formatTime(msg.createdAt),
+      });
+    });
+
+    res.json(groupedMessages);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// ✅ Get Chat Users with Unread Count (Updated)
+app.post('/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    const messages = await Message.find({
+      $or: [{ senderId: userId }, { receiverId: userId }],
+    }).sort({ createdAt: -1 });
+
+    const uniqueChats = new Map();
+
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!uniqueChats.has(participants)) {
+        const chatWith = msg.senderId === userId ? msg.receiverId : msg.senderId;
+
+        uniqueChats.set(participants, {
+          chatWith,
+          lastMessage: msg.text,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          timestamp: msg.createdAt,
+          unreadCount: 0, // Placeholder
+        });
+      }
+    });
+
+    const unreadCounts = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      {
+        $group: {
+          _id: '$senderId',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const unreadMap = {};
+    unreadCounts.forEach((item) => {
+      unreadMap[item._id] = item.count;
+    });
+
+    const chatList = Array.from(uniqueChats.values()).map((chat) => ({
+      ...chat,
+      unreadCount: unreadMap[chat.chatWith] || 0,
+    }));
+
+    res.json(chatList);
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+// ✅ Unread Count API (for fallback)
+app.post('/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    const unread = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      {
+        $group: {
+          _id: '$senderId',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const unreadMap = {};
+    unread.forEach((item) => {
+      unreadMap[item._id] = item.count;
+    });
+
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+server.listen(3000, '0.0.0.0', () => {
+  console.log('🚀 Server running at http://localhost:3000');
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import connectDB from './db/connectDB.js';
+import followRouter from './routes/follow.js';
+import admin from './firebase.js';
+import User from './models/User.js'; // Ensure User model has `fcmToken`
+import locationRoutes from "./routes/locationRoutes.js";
+import bidRoutes from './routes/bidRoutes.js';
+
+const app = express();
+const server = http.createServer(app);
+connectDB();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// ✅ Static FCM Token for Demo
+const DEMO_FCM_TOKEN = 'dmX7Q1g_SmWALfFTVL6tIC:APA91bGYxJ0uuCeZJOoVKGGenRuaFV-WkSuLkCErZOZ0ZHRC8ciTIUG8DxwSZS6rcTNB_pdxHSq8CS0fTUE406ebpG-iz8gZ0FwZreKhbB3O_ZxoRcAblEw';
+
+// ✅ Message Schema
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: String,
+    status: { type: String, enum: ['sent', 'delivered', 'seen'], default: 'sent' },
+    isRead: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+const Message = mongoose.model('Message', messageSchema);
+
+// ✅ Socket.IO Setup
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+});
+app.use('/api', bidRoutes)
+
+app.use('/api', followRouter(io));
+
+app.use("/api", locationRoutes);
+
+// ✅ New Route: Update User's FCM Token
+app.post('/updateToken', async (req, res) => {
+  const { userId, fcmToken } = req.body;
+  try {
+    await User.findOneAndUpdate({ userId }, { fcmToken }, { upsert: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Error updating token:', err.message);
+    res.status(500).json({ error: 'Failed to update token' });
+  }
+});
+// ✅ New Route: Get User's FCM Token
+app.get('/getUserToken/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findOne({ userId }).select('fcmToken');
+    res.json(user || { fcmToken: null });
+  } catch (err) {
+    console.error('❌ Error fetching token:', err.message);
+    res.status(500).json({ error: 'Failed to fetch token' });
+  }
+});
+/**
+ * Send Push Notification via FCM
+ */
+async function sendPushNotification(token, title, body, data = {}) {
+  try {
+    const targetToken = token || DEMO_FCM_TOKEN;
+    const message = {
+      token: targetToken,
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      android: { priority: 'high', notification: { sound: 'default' } },
+      apns: { payload: { aps: { sound: 'default' } } },
+    };
+    await admin.messaging().send(message);
+    console.log(`✅ Push sent to ${targetToken}`);
+  } catch (error) {
+    console.error('❌ Push error:', error);
+  }
+}
+
+// ✅ Socket.IO events
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  socket.on('send_message', async (data) => {
+    try {
+      const { senderId, receiverId, text, username } = data; // ✅ Add username
+      const newMessage = new Message({ senderId, receiverId, text });
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      io.emit('receive_message', {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: 'sent',
+      });
+
+      const unreadCount = await Message.countDocuments({
+        receiverId,
+        senderId,
+        isRead: false,
+      });
+
+      io.emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: unreadCount,
+      });
+
+      // ✅ Send Push Notification with Username from Frontend
+      const recipientUser = await User.findOne({ userId: receiverId }).select('fcmToken');
+      await sendPushNotification(
+        recipientUser?.fcmToken || DEMO_FCM_TOKEN,
+        username || 'New Message', // Use username from frontend
+        text || 'You have a new message',
+        {
+          type: 'chat_message',
+          senderId,
+          receiverId,
+          messageId: savedMessage._id.toString(),
+          username: username || 'Unknown', // Include username in data
+        }
+      );
+
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      await Message.findByIdAndUpdate(messageId, { status: 'delivered' });
+      io.emit('message_status_update', { messageId, status: 'delivered' });
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(messageId, {
+        status: 'seen',
+        isRead: true,
+      });
+
+      io.emit('message_status_update', { messageId, status: 'seen' });
+
+      const unreadCount = await Message.countDocuments({
+        receiverId: updated.receiverId,
+        senderId: updated.senderId,
+        isRead: false,
+      });
+
+      io.emit('unread_count_update', {
+        userId: updated.receiverId,
+        from: updated.senderId,
+        count: unreadCount,
+      });
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+
+      io.emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: 0,
+      });
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ✅ Get Messages with Grouping
+app.post('/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+  const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatDateLabel = (date) => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const msgDate = new Date(date);
+
+    if (msgDate.toDateString() === today.toDateString()) return 'Today';
+    if (msgDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return msgDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: msgDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+    });
+  };
+
+  try {
+    const messages = await Message.find({
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId },
+      ],
+    }).sort({ createdAt: 1 });
+
+    const groupedMessages = [];
+    let currentLabel = '';
+
+    messages.forEach((msg) => {
+      const label = formatDateLabel(msg.createdAt);
+      if (label !== currentLabel) {
+        groupedMessages.push({ type: 'label', label });
+        currentLabel = label;
+      }
+      groupedMessages.push({
+        type: 'message',
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        status: msg.status,
+        isRead: msg.isRead,
+        timestamp: msg.createdAt,
+        time: formatTime(msg.createdAt),
+      });
+    });
+
+    res.json(groupedMessages);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// ✅ Get Chat Users with Unread Count
+app.post('/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const messages = await Message.find({
+      $or: [{ senderId: userId }, { receiverId: userId }],
+    }).sort({ createdAt: -1 });
+
+    const uniqueChats = new Map();
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!uniqueChats.has(participants)) {
+        const chatWith = msg.senderId === userId ? msg.receiverId : msg.senderId;
+        uniqueChats.set(participants, {
+          chatWith,
+          lastMessage: msg.text,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: msg.createdAt,
+          unreadCount: 0,
+        });
+      }
+    });
+
+    const unreadCounts = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      { $group: { _id: '$senderId', count: { $sum: 1 } } },
+    ]);
+
+    const unreadMap = {};
+    unreadCounts.forEach((item) => {
+      unreadMap[item._id] = item.count;
+    });
+
+    const chatList = Array.from(uniqueChats.values()).map((chat) => ({
+      ...chat,
+      unreadCount: unreadMap[chat.chatWith] || 0,
+    }));
+
+    res.json(chatList);
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+// ✅ Unread Count API
+app.post('/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const unread = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      { $group: { _id: '$senderId', count: { $sum: 1 } } },
+    ]);
+    const unreadMap = {};
+    unread.forEach((item) => { unreadMap[item._id] = item.count; });
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+server.listen(3000, '0.0.0.0', () => {
+  console.log('🚀 Server running at http://localhost:3000');
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import connectDB from './db/connectDB.js';
+import followRouter from './routes/follow.js';
+import admin from './firebase.js';
+import User from './models/User.js'; // Ensure User model has `fcmToken`
+import locationRoutes from "./routes/locationRoutes.js";
+import bidRoutes from './routes/bidRoutes.js';
+import { uploadpdf } from './upload_pdf/uploadpdf.js';
+const app = express();
+const server = http.createServer(app);
+connectDB();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// ✅ Static FCM Token for Demo
+const DEMO_FCM_TOKEN = 'dmX7Q1g_SmWALfFTVL6tIC:APA91bGYxJ0uuCeZJOoVKGGenRuaFV-WkSuLkCErZOZ0ZHRC8ciTIUG8DxwSZS6rcTNB_pdxHSq8CS0fTUE406ebpG-iz8gZ0FwZreKhbB3O_ZxoRcAblEw';
+
+// ✅ Message Schema 
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: String,
+    status: { type: String, enum: ['sent', 'delivered', 'seen'], default: 'sent' },
+    isRead: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+const Message = mongoose.model('Message', messageSchema);
+
+// ✅ Socket.IO Setup
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+});
+
+app.use("/", uploadpdf);
+
+app.use('/api', bidRoutes)
+
+app.use('/api', followRouter(io));
+
+app.use("/api", locationRoutes);
+
+// ✅ New Route: Update User's FCM Token
+app.post('/updateToken', async (req, res) => {
+  const { userId, fcmToken } = req.body;
+  try {
+    await User.findOneAndUpdate({ userId }, { fcmToken }, { upsert: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Error updating token:', err.message);
+    res.status(500).json({ error: 'Failed to update token' });
+  }
+});
+// ✅ New Route: Get User's FCM Token
+app.get('/getUserToken/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findOne({ userId }).select('fcmToken');
+    res.json(user || { fcmToken: null });
+  } catch (err) {
+    console.error('❌ Error fetching token:', err.message);
+    res.status(500).json({ error: 'Failed to fetch token' });
+  }
+});
+/**
+ * Send Push Notification via FCM
+ */
+async function sendPushNotification(token, title, body, data = {}) {
+  try {
+    const targetToken = token || DEMO_FCM_TOKEN;
+    const message = {
+      token: targetToken,
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      android: { priority: 'high', notification: { sound: 'default' } },
+      apns: { payload: { aps: { sound: 'default' } } },
+    };
+    await admin.messaging().send(message);
+    console.log(`✅ Push sent to ${targetToken}`);
+  } catch (error) {
+    console.error('❌ Push error:', error);
+  }
+}
+
+// ✅ Socket.IO events
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  socket.on('send_message', async (data) => {
+    try {
+      const { senderId, receiverId, text, username } = data; // ✅ Add username
+      const newMessage = new Message({ senderId, receiverId, text });
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      io.emit('receive_message', {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: 'sent',
+      });
+
+      const unreadCount = await Message.countDocuments({
+        receiverId,
+        senderId,
+        isRead: false,
+      });
+
+      io.emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: unreadCount,
+      });
+
+      // ✅ Send Push Notification with Username from Frontend
+      const recipientUser = await User.findOne({ userId: receiverId }).select('fcmToken');
+      await sendPushNotification(
+        recipientUser?.fcmToken || DEMO_FCM_TOKEN,
+        username || 'New Message', // Use username from frontend
+        text || 'You have a new message',
+        {
+          type: 'chat_message',
+          senderId,
+          receiverId,
+          messageId: savedMessage._id.toString(),
+          username: username || 'Unknown', // Include username in data
+        }
+      );
+
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      await Message.findByIdAndUpdate(messageId, { status: 'delivered' });
+      io.emit('message_status_update', { messageId, status: 'delivered' });
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(messageId, {
+        status: 'seen',
+        isRead: true,
+      });
+
+      io.emit('message_status_update', { messageId, status: 'seen' });
+
+      const unreadCount = await Message.countDocuments({
+        receiverId: updated.receiverId,
+        senderId: updated.senderId,
+        isRead: false,
+      });
+
+      io.emit('unread_count_update', {
+        userId: updated.receiverId,
+        from: updated.senderId,
+        count: unreadCount,
+      });
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+
+      io.emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: 0,
+      });
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ✅ Get Messages with Grouping
+app.post('/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+  const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatDateLabel = (date) => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const msgDate = new Date(date);
+
+    if (msgDate.toDateString() === today.toDateString()) return 'Today';
+    if (msgDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return msgDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: msgDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+    });
+  };
+
+  try {
+    const messages = await Message.find({
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId },
+      ],
+    }).sort({ createdAt: 1 });
+
+    const groupedMessages = [];
+    let currentLabel = '';
+
+    messages.forEach((msg) => {
+      const label = formatDateLabel(msg.createdAt);
+      if (label !== currentLabel) {
+        groupedMessages.push({ type: 'label', label });
+        currentLabel = label;
+      }
+      groupedMessages.push({
+        type: 'message',
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        status: msg.status,
+        isRead: msg.isRead,
+        timestamp: msg.createdAt,
+        time: formatTime(msg.createdAt),
+      });
+    });
+
+    res.json(groupedMessages);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// ✅ Get Chat Users with Unread Count
+app.post('/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const messages = await Message.find({
+      $or: [{ senderId: userId }, { receiverId: userId }],
+    }).sort({ createdAt: -1 });
+
+    const uniqueChats = new Map();
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!uniqueChats.has(participants)) {
+        const chatWith = msg.senderId === userId ? msg.receiverId : msg.senderId;
+        uniqueChats.set(participants, {
+          chatWith,
+          lastMessage: msg.text,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: msg.createdAt,
+          unreadCount: 0,
+        });
+      }
+    });
+
+    const unreadCounts = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      { $group: { _id: '$senderId', count: { $sum: 1 } } },
+    ]);
+
+    const unreadMap = {};
+    unreadCounts.forEach((item) => {
+      unreadMap[item._id] = item.count;
+    });
+
+    const chatList = Array.from(uniqueChats.values()).map((chat) => ({
+      ...chat,
+      unreadCount: unreadMap[chat.chatWith] || 0,
+    }));
+
+    res.json(chatList);
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+// ✅ Unread Count API
+app.post('/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const unread = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      { $group: { _id: '$senderId', count: { $sum: 1 } } },
+    ]);
+    const unreadMap = {};
+    unread.forEach((item) => { unreadMap[item._id] = item.count; });
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+server.listen(3000, '0.0.0.0', () => {
+  console.log('🚀 Server running at http://localhost:3000');
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import connectDB from './db/connectDB.js';
+import followRouter from './routes/follow.js';
+import admin from './firebase.js';
+import User from './models/User.js';
+import locationRoutes from './routes/locationRoutes.js';
+import bidRoutes from './routes/BidRoutes.js';
+import { uploadpdf } from './upload_pdf/uploadpdf.js';
+import { Client } from '@googlemaps/google-maps-services-js';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+});
+
+connectDB();
+const mapsClient = new Client({});
+
+app.use(cors());
+app.use(express.json());
+
+app.use('/', uploadpdf);
+app.use('/api', bidRoutes);
+app.use('/api', followRouter(io));
+app.use('/api', locationRoutes);
+
+// ✅ Message Schema (unchanged)
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: String,
+    status: { type: String, enum: ['sent', 'delivered', 'seen'], default: 'sent' },
+    isRead: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+const Message = mongoose.model('Message', messageSchema);
+
+const DEMO_FCM_TOKEN = 'dmX7Q1g_SmWALfFTVL6tIC:APA91bGYxJ0uuCeZJOoVKGGenRuaFV-WkSuLkCErZOZ0ZHRC8ciTIUG8DxwSZS6rcTNB_pdxHSq8CS0fTUE406ebpG-iz8gZ0FwZreKhbB3O_ZxoRcAblEw';
+
+// ✅ Send Push Notification (unchanged)
+async function sendPushNotification(token, title, body, data = {}) {
+  try {
+    const targetToken = token || DEMO_FCM_TOKEN;
+    const message = {
+      token: targetToken,
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      android: { priority: 'high', notification: { sound: 'default' } },
+      apns: { payload: { aps: { sound: 'default' } } },
+    };
+    await admin.messaging().send(message);
+    console.log(`✅ Push sent to ${targetToken}`);
+  } catch (error) {
+    console.error('❌ Push error:', error.message);
+  }
+}
+
+// ✅ Existing Routes (unchanged)
+app.post('/updateToken', async (req, res) => {
+  const { userId, fcmToken } = req.body;
+  try {
+    await User.findOneAndUpdate({ userId }, { fcmToken }, { upsert: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Error updating token:', err.message);
+    res.status(500).json({ error: 'Failed to update token' });
+  }
+});
+
+app.get('/getUserToken/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findOne({ userId }).select('fcmToken');
+    res.json(user || { fcmToken: null });
+  } catch (err) {
+    console.error('❌ Error fetching token:', err.message);
+    res.status(500).json({ error: 'Failed to fetch token' });
+  }
+});
+
+app.post('/updateLocation', async (req, res) => {
+  const { userId, lat, lng } = req.body;
+  try {
+    await User.findOneAndUpdate(
+      { userId },
+      { location: { lat, lng } },
+      { upsert: true }
+    );
+    io.emit('location_update', { userId, lat, lng });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Error updating location:', err.message);
+    res.status(500).json({ error: 'Failed to update location' });
+  }
+});
+
+app.post('/nearbyUsers', async (req, res) => {
+  const { userId, radius = 10000 } = req.body;
+  try {
+    const user = await User.findOne({ userId }).select('location');
+    if (!user || !user.location) {
+      return res.status(404).json({ error: 'User or location not found' });
+    }
+
+    const nearbyUsers = await User.find({
+      userId: { $ne: userId },
+      location: {
+        $near: {
+          $geometry: { type: 'Point', coordinates: [user.location.lng, user.location.lat] },
+          $maxDistance: radius,
+        },
+      },
+    }).select('userId location');
+
+    res.json(nearbyUsers);
+  } catch (err) {
+    console.error('❌ Error fetching nearby users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch nearby users' });
+  }
+});
+
+app.get('/placeDetails/:placeId', async (req, res) => {
+  const { placeId } = req.params;
+  try {
+    const response = await mapsClient.placeDetails({
+      params: {
+        place_id: placeId,
+        key: process.env.MAPS_API_KEY,
+      },
+      timeout: 1000,
+    });
+    res.json(response.data.result);
+  } catch (err) {
+    console.error('❌ Error fetching place details:', err.message);
+    res.status(500).json({ error: 'Failed to fetch place details' });
+  }
+});
+
+app.get('/geocode', async (req, res) => {
+  const { address } = req.query;
+  if (!address) {
+    return res.status(400).json({ error: 'Address is required' });
+  }
+  try {
+    const response = await mapsClient.geocode({
+      params: {
+        address,
+        key: process.env.MAPS_API_KEY,
+      },
+      timeout: 1000,
+    });
+    res.json(response.data.results[0]?.geometry.location || {});
+  } catch (err) {
+    console.error('❌ Error geocoding:', err.message);
+    res.status(500).json({ error: 'Failed to geocode' });
+  }
+});
+
+app.get('/elevation', async (req, res) => {
+  const { lat, lng } = req.query;
+  if (!lat || !lng) {
+    return res.status(400).json({ error: 'Latitude and longitude are required' });
+  }
+  try {
+    const response = await mapsClient.elevation({
+      params: {
+        locations: [{ lat: parseFloat(lat), lng: parseFloat(lng) }],
+        key: process.env.MAPS_API_KEY,
+      },
+      timeout: 1000,
+    });
+    res.json({ elevation: response.data.results[0]?.elevation || 0 });
+  } catch (err) {
+    console.error('❌ Error fetching elevation:', err.message);
+    res.status(500).json({ error: 'Failed to fetch elevation' });
+  }
+});
+
+// ✅ New Route: Search Nearby Places
+app.post('/searchNearbyPlaces', async (req, res) => {
+  const { lat, lng, radius = 5000, type = 'point_of_interest' } = req.body;
+  if (!lat || !lng) {
+    return res.status(400).json({ error: 'Latitude and longitude are required' });
+  }
+  try {
+    const response = await mapsClient.placesNearby({
+      params: {
+        location: { lat: parseFloat(lat), lng: parseFloat(lng) },
+        radius: parseInt(radius),
+        type,
+        key: process.env.MAPS_API_KEY,
+      },
+      timeout: 1000,
+    });
+
+    // Return top 5 nearest places for simplicity
+    const places = response.data.results.slice(0, 5).map((place) => ({
+      place_id: place.place_id,
+      name: place.name,
+      vicinity: place.vicinity,
+      location: place.geometry.location,
+      types: place.types,
+    }));
+    res.json(places);
+  } catch (err) {
+    console.error('❌ Error fetching nearby places:', err.message);
+    res.status(500).json({ error: 'Failed to fetch nearby places' });
+  }
+});
+
+// ✅ New Route: Search Places by Keyword
+app.get('/searchPlacesByKeyword', async (req, res) => {
+  const { keyword, lat, lng } = req.query;
+  if (!keyword) {
+    return res.status(400).json({ error: 'Keyword is required' });
+  }
+  try {
+    const params = {
+      query: keyword,
+      key: process.env.MAPS_API_KEY,
+    };
+    if (lat && lng) {
+      params.location = { lat: parseFloat(lat), lng: parseFloat(lng) };
+      params.radius = 10000; // 10km radius for location-biased results
+    }
+    const response = await mapsClient.textSearch({
+      params,
+      timeout: 1000,
+    });
+
+    // Return top 5 results for simplicity
+    const places = response.data.results.slice(0, 5).map((place) => ({
+      place_id: place.place_id,
+      name: place.name,
+      formatted_address: place.formatted_address,
+      location: place.geometry.location,
+      types: place.types,
+    }));
+    
+    // Auto-select the first result if available
+    const selectedPlace = places[0] || null;
+    res.json({ results: places, selected: selectedPlace });
+  } catch (err) {
+    console.error('❌ Error searching places:', err.message);
+    res.status(500).json({ error: 'Failed to search places' });
+  }
+});
+
+// ✅ Socket.IO Events (unchanged except for location sharing)
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  socket.on('join', ({ userId }) => {
+    socket.join(userId);
+    console.log(`User ${userId} joined their room`);
+  });
+
+  socket.on('share_location', async ({ userId, lat, lng }) => {
+    try {
+      await User.findOneAndUpdate(
+        { userId },
+        { location: { lat, lng } },
+        { upsert: true }
+      );
+      io.emit('location_update', { userId, lat, lng });
+
+      const nearbyUsers = await User.find({
+        userId: { $ne: userId },
+        location: {
+          $near: {
+            $geometry: { type: 'Point', coordinates: [lng, lat] },
+            $maxDistance: 10000,
+          },
+        },
+      }).select('userId fcmToken');
+
+      nearbyUsers.forEach(async (nearbyUser) => {
+        await sendPushNotification(
+          nearbyUser.fcmToken || DEMO_FCM_TOKEN,
+          'Nearby User Update',
+          `${userId} shared their location near you!`,
+          { type: 'location_update', userId, lat, lng }
+        );
+      });
+    } catch (err) {
+      console.error('❌ Error sharing location:', err.message);
+    }
+  });
+
+  socket.on('send_message', async (data) => {
+    try {
+      const { senderId, receiverId, text, username } = data;
+      const newMessage = new Message({ senderId, receiverId, text });
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      io.emit('receive_message', {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: 'sent',
+      });
+
+      const unreadCount = await Message.countDocuments({
+        receiverId,
+        senderId,
+        isRead: false,
+      });
+
+      io.to(receiverId).emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: unreadCount,
+      });
+
+      const recipientUser = await User.findOne({ userId: receiverId }).select('fcmToken');
+      await sendPushNotification(
+        recipientUser?.fcmToken || DEMO_FCM_TOKEN,
+        username || 'New Message',
+        text || 'You have a new message',
+        {
+          type: 'chat_message',
+          senderId,
+          receiverId,
+          messageId: savedMessage._id.toString(),
+          username: username || 'Unknown',
+        }
+      );
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      await Message.findByIdAndUpdate(messageId, { status: 'delivered' });
+      io.emit('message_status_update', { messageId, status: 'delivered' });
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(messageId, {
+        status: 'seen',
+        isRead: true,
+      });
+
+      io.emit('message_status_update', { messageId, status: 'seen' });
+
+      const unreadCount = await Message.countDocuments({
+        receiverId: updated.receiverId,
+        senderId: updated.senderId,
+        isRead: false,
+      });
+
+      io.to(updated.receiverId).emit('unread_count_update', {
+        userId: updated.receiverId,
+        from: updated.senderId,
+        count: unreadCount,
+      });
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+
+      io.to(receiverId).emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: 0,
+      });
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ✅ Existing Message and Chat Routes (unchanged)
+app.post('/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+  const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formatDateLabel = (date) => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const msgDate = new Date(date);
+
+    if (msgDate.toDateString() === today.toDateString()) return 'Today';
+    if (msgDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return msgDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: msgDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+    });
+  };
+
+  try {
+    const messages = await Message.find({
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId },
+      ],
+    }).sort({ createdAt: 1 });
+
+    const groupedMessages = [];
+    let currentLabel = '';
+
+    messages.forEach((msg) => {
+      const label = formatDateLabel(msg.createdAt);
+      if (label !== currentLabel) {
+        groupedMessages.push({ type: 'label', label });
+        currentLabel = label;
+      }
+      groupedMessages.push({
+        type: 'message',
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        status: msg.status,
+        isRead: msg.isRead,
+        timestamp: msg.createdAt,
+        time: formatTime(msg.createdAt),
+      });
+    });
+
+    res.json(groupedMessages);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+app.post('/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const messages = await Message.find({
+      $or: [{ senderId: userId }, { receiverId: userId }],
+    }).sort({ createdAt: -1 });
+
+    const uniqueChats = new Map();
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!uniqueChats.has(participants)) {
+        const chatWith = msg.senderId === userId ? msg.receiverId : msg.senderId;
+        uniqueChats.set(participants, {
+          chatWith,
+          lastMessage: msg.text,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: msg.createdAt,
+          unreadCount: 0,
+        });
+      }
+    });
+
+    const unreadCounts = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      { $group: { _id: '$senderId', count: { $sum: 1 } } },
+    ]);
+
+    const unreadMap = {};
+    unreadCounts.forEach((item) => {
+      unreadMap[item._id] = item.count;
+    });
+
+    const chatList = Array.from(uniqueChats.values()).map((chat) => ({
+      ...chat,
+      unreadCount: unreadMap[chat.chatWith] || 0,
+    }));
+
+    res.json(chatList);
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+app.post('/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const unread = await Message.aggregate([
+      { $match: { receiverId: userId, isRead: false } },
+      { $group: { _id: '$senderId', count: { $sum: 1 } } },
+    ]);
+    const unreadMap = {};
+    unread.forEach((item) => {
+      unreadMap[item._id] = item.count;
+    });
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+server.listen(3000, '0.0.0.0', () => {
+  console.log('🚀 Server running at http://localhost:3000');
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// server.js
+import dotenv from 'dotenv';
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
+import mime from 'mime-types';
+// your project imports
+import connectDB from './db/connectDB.js';
+//import followRouter from './routes/follow.js';
+//import admin from './firebase.js';
+import User from './models/User.js';
+import bidRoutes from './routes/BidRoutes.js';
+import { uploadpdf } from './upload_pdf/uploadpdf.js';
+import reviewRoutes from './routes/reviewRoutes.js';
+import transactionRoutes from './routes/transactions.js';
+import locationRoutes from './routes/locationRoutes.js';
+import countRoutes from './routes/countRoutes.js';
+import SkipRoute from './routes/SkipRoute.js';
+// import socketRoutes from "./routes/socketRoutes.js";
+// import { setSocketInstance } from "./controllers/socketController.js";
+ 
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
+dotenv.config();
+
+//setSocketInstance(io);
+
+await connectDB();
+
+app.use(cors());
+app.use(express.json());
+//app.use("/api/socket", socketRoutes);
+
+// ========== UPLOADS SETUP ==========
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// serve static uploads
+app.use('/uploads', express.static(uploadsDir));
+
+// Multer config
+const ALLOWED_MIMES = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'text/plain': 'txt'
+};
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = mime.extension(file.mimetype) || '';
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    cb(null, `${unique}.${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (req, file, cb) => {
+    if (Object.keys(ALLOWED_MIMES).includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Invalid file type'));
+  }
+});
+
+// ========== SINGLE FILE UPLOAD (with optional caption) ==========
+app.post('/uploadFile', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const { caption = '' } = req.body;
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    res.json({
+      success: true,
+      attachment: {
+        url: fileUrl,
+        filename: req.file.originalname,
+        mime: req.file.mimetype,
+        size: req.file.size,
+        caption: String(caption || '')
+      }
+    });
+  } catch (err) {
+    console.error('❌ upload error:', err.message);
+    res.status(500).json({ error: 'File upload failed' });
+  }
+});
+
+// ========== MULTI FILE UPLOAD (with optional captions[]) ==========
+app.post('/uploadFiles', upload.array('files', 10), (req, res) => {
+  try {
+    if (!req.files?.length) return res.status(400).json({ error: 'No files uploaded' });
+
+    let { captions } = req.body;
+    if (typeof captions === 'string') {
+      try {
+        const maybeJson = JSON.parse(captions);
+        captions = Array.isArray(maybeJson) ? maybeJson : [captions];
+      } catch {
+        captions = [captions];
+      }
+    } else if (!Array.isArray(captions)) {
+      captions = [];
+    }
+
+    const attachments = req.files.map((f, idx) => {
+      const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${f.filename}`;
+      return {
+        url: fileUrl,
+        filename: f.originalname,
+        mime: f.mimetype,
+        size: f.size,
+        caption: String(captions[idx] || '')
+      };
+    });
+
+    res.json({ success: true, attachments });
+  } catch (err) {
+    console.error('❌ multi upload error:', err.message);
+    res.status(500).json({ error: 'Files upload failed' });
+  }
+});
+
+// ========== ROUTES ==========
+app.use('/', uploadpdf);
+app.use('/api', bidRoutes);
+//app.use('/api', followRouter(io));
+app.use('/api', reviewRoutes);
+app.use('/api', locationRoutes);
+app.use('/api', countRoutes)
+app.use("/api", transactionRoutes);
+app.use('/api', SkipRoute);
+
+// ========== Mongoose Message Schema (with caption & activeStatus & negotiateAmount) ==========
+const attachmentSchema = new mongoose.Schema(
+  {
+    url: String,
+    filename: String,
+    mime: String,
+    size: Number,
+    caption: { type: String, default: '' }
+  },
+  { _id: false }
+);
+
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: { type: String, default: '' },
+    attachments: { type: [attachmentSchema], default: [] },
+
+    // message delivery status
+    status: {
+      type: String,
+      enum: ['sent', 'delivered', 'seen'],
+      default: 'sent'
+    },
+
+    isRead: { type: Boolean, default: false },
+
+    activeStatus: {
+      type: String,
+      enum: ['accept', 'negotiate', 'none'],
+      default: 'none'
+    },
+
+    // negotiated amount (optional)
+    negotiateAmount: { type: Number, default: 0 }
+  },
+  { timestamps: true }
+);
+
+const Message = mongoose.model('Message', messageSchema);
+
+// DEMO FCM token (fallback)
+const DEMO_FCM_TOKEN =
+  process.env.DEMO_FCM_TOKEN ||
+  'dmX7Q1g_SmWALfFTVL6tIC:APA91bGYxJ0uuCeZJOoVKGGenRuaFV-WkSuLkCErZOZ0ZHRC8ciTIUG8DxwSZS6rcTNB_pdxHSq8CS0fTUE406ebpG-iz8gZ0FwZreKhbB3O_ZxoRcAblEw';
+
+// Send Push Notification helper
+async function sendPushNotification(token, title, body, data = {}) {
+  try {
+    const targetToken = token || DEMO_FCM_TOKEN;
+    const message = {
+      token: targetToken,
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      android: { priority: 'high', notification: { sound: 'default' } },
+      apns: { payload: { aps: { sound: 'default' } } }
+    };
+    // await admin.messaging().send(message);
+    console.log(`✅ Push sent to ${targetToken}`);
+  } catch (error) {
+    console.error('❌ Push error:', error.message);
+  }
+}
+
+// ========== User token routes ==========
+app.post('/updateToken', async (req, res) => {
+  const { userId, fcmToken } = req.body;
+  try {
+    await User.findOneAndUpdate(
+      { userId },
+      { fcmToken },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Error updating token:', err.message);
+    res.status(500).json({ error: 'Failed to update token' });
+  }
+});
+
+app.get('/getUserToken/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findOne({ userId }).select('fcmToken');
+    res.json(user || { fcmToken: null });
+  } catch (err) {
+    console.error('❌ Error fetching token:', err.message);
+    res.status(500).json({ error: 'Failed to fetch token' });
+  }
+});
+
+// ========== SOCKET.IO ==========
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  socket.on('join', ({ userId }) => {
+    if (userId) {
+      socket.join(userId);
+      console.log(`User ${userId} joined their room`);
+    }
+  });
+
+  // send_message supports attachments WITH captions + activeStatus + negotiateAmount
+  socket.on('send_message', async (data) => {
+    try {
+      // expected:
+      // { senderId, receiverId, text, username, attachments: [{url, filename, mime, size, caption}], activeStatus, negotiateAmount }
+      const {
+        senderId,
+        receiverId,
+        text = '',
+        username,
+        attachments = [],
+        activeStatus = 'none',
+        negotiateAmount = 0
+      } = data;
+
+      // ensure negotiateAmount is a Number (or 0)
+      const negotiateVal =
+        negotiateAmount === null || negotiateAmount === undefined
+          ? 0
+          : Number(negotiateAmount) || 0;
+
+      const newMessage = new Message({
+        senderId,
+        receiverId,
+        text,
+        attachments,
+        activeStatus,
+        negotiateAmount: negotiateVal
+      });
+
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const payload = {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        attachments,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: savedMessage.status,
+        activeStatus: savedMessage.activeStatus,
+        negotiateAmount: savedMessage.negotiateAmount || 0
+      };
+
+      // emit to both sender and receiver
+      io.to(receiverId).emit('receive_message', payload);
+      io.to(senderId).emit('receive_message', payload);
+
+      // unread count for receiver from this sender
+      const unreadCount = await Message.countDocuments({
+        receiverId,
+        senderId,
+        isRead: false
+      });
+
+      io.to(receiverId).emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: unreadCount
+      });
+
+      // push notification
+      const recipientUser = await User.findOne({ userId: receiverId }).select('fcmToken');
+
+      let notifyBody =
+        (text && text.length ? text.slice(0, 100) : '') ||
+        (attachments && attachments.length
+          ? `${username || 'Someone'} sent an attachment`
+          : 'You have a new message');
+
+      await sendPushNotification(
+        recipientUser?.fcmToken || DEMO_FCM_TOKEN,
+        username || 'New Message',
+        notifyBody,
+        {
+          type: 'chat_message',
+          senderId,
+          receiverId,
+          messageId: savedMessage._id.toString(),
+          hasAttachments: attachments.length ? '1' : '0',
+          activeStatus: savedMessage.activeStatus || 'none',
+          negotiateAmount: String(savedMessage.negotiateAmount || 0)
+        }
+      );
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(messageId, { status: 'delivered' }, { new: true });
+      if (updated) {
+        // emit update only (scoped) - you can change to io.emit if you prefer global
+        io.to(updated.receiverId).emit('message_status_update', { messageId, status: 'delivered' });
+        io.to(updated.senderId).emit('message_status_update', { messageId, status: 'delivered' });
+      } else {
+        io.emit('message_status_update', { messageId, status: 'delivered' });
+      }
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(
+        messageId,
+        { status: 'seen', isRead: true },
+        { new: true }
+      );
+      if (updated) {
+        io.to(updated.receiverId).emit('message_status_update', { messageId, status: 'seen' });
+        io.to(updated.senderId).emit('message_status_update', { messageId, status: 'seen' });
+
+        const unreadCount = await Message.countDocuments({
+          receiverId: updated.receiverId,
+          senderId: updated.senderId,
+          isRead: false
+        });
+
+        io.to(updated.receiverId).emit('unread_count_update', {
+          userId: updated.receiverId,
+          from: updated.senderId,
+          count: unreadCount
+        });
+      } else {
+        // fallback emit
+        io.emit('message_status_update', { messageId, status: 'seen' });
+      }
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+
+      io.to(receiverId).emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: 0
+      });
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ========== MESSAGE & CHAT ROUTES ==========
+
+app.post('/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+
+  const formatTime = (date) =>
+    date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const formatDateLabel = (date) => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const msgDate = new Date(date);
+
+    if (msgDate.toDateString() === today.toDateString()) return 'Today';
+    if (msgDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return msgDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: msgDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+    });
+  };
+
+  try {
+    const messages = await mongoose
+      .model('Message')
+      .find({
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      })
+      .sort({ createdAt: 1 });
+
+    const grouped = [];
+    let currentLabel = '';
+
+    messages.forEach((msg) => {
+      const label = formatDateLabel(msg.createdAt);
+      if (label !== currentLabel) {
+        grouped.push({ type: 'label', label });
+        currentLabel = label;
+      }
+      grouped.push({
+        type: 'message',
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        attachments: msg.attachments || [],
+        status: msg.status,
+        isRead: msg.isRead,
+        activeStatus: msg.activeStatus || 'none',
+        negotiateAmount: msg.negotiateAmount || 0,
+        timestamp: msg.createdAt,
+        time: formatTime(msg.createdAt)
+      });
+    });
+
+    res.json(grouped);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+app.post('/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const messages = await mongoose
+      .model('Message')
+      .find({
+        $or: [{ senderId: userId }, { receiverId: userId }]
+      })
+      .sort({ createdAt: -1 });
+
+    const unique = new Map();
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!unique.has(participants)) {
+        const chatWith = msg.senderId === userId ? msg.receiverId : msg.senderId;
+
+        const baseLastMessage =
+          msg.text ||
+          (msg.attachments?.length
+            ? msg.attachments[0].caption
+              ? `Attachment: ${msg.attachments[0].caption}`
+              : 'Attachment'
+            : '');
+
+        const lastMessage =
+          msg.activeStatus && msg.activeStatus !== 'none'
+            ? `${baseLastMessage || 'Status'} [${msg.activeStatus}]`
+            : baseLastMessage;
+
+        unique.set(participants, {
+          chatWith,
+          lastMessage,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          timestamp: msg.createdAt,
+          unreadCount: 0
+        });
+      }
+    });
+
+    const unreadCounts = await mongoose
+      .model('Message')
+      .aggregate([
+        { $match: { receiverId: userId, isRead: false } },
+        { $group: { _id: '$senderId', count: { $sum: 1 } } }
+      ]);
+
+    const unreadMap = {};
+    unreadCounts.forEach((u) => (unreadMap[u._id] = u.count));
+
+    const chatList = Array.from(unique.values()).map((chat) => ({
+      ...chat,
+      unreadCount: unreadMap[chat.chatWith] || 0
+    }));
+
+    res.json(chatList);
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+app.post('/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const unread = await mongoose
+      .model('Message')
+      .aggregate([
+        { $match: { receiverId: userId, isRead: false } },
+        { $group: { _id: '$senderId', count: { $sum: 1 } } }
+      ]);
+
+    const unreadMap = {};
+    unread.forEach((item) => (unreadMap[item._id] = item.count));
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+// ========== START SERVER ==========
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+tue, 10 Mar
+
+
+
+
+
+
+
+
+
+
+
+
+// server.js
+import dotenv from 'dotenv';
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
+import mime from 'mime-types';
+// your project imports
+import connectDB from './db/connectDB.js';
+//import followRouter from './routes/follow.js';
+//import admin from './firebase.js';
+import User from './models/User.js';
+import bidRoutes from './routes/BidRoutes.js';
+import { uploadpdf } from './upload_pdf/uploadpdf.js';
+import reviewRoutes from './routes/reviewRoutes.js';
+import transactionRoutes from './routes/transactions.js';
+import locationRoutes from './routes/locationRoutes.js';
+import countRoutes from './routes/countRoutes.js';
+import SkipRoute from './routes/SkipRoute.js';
+// import socketRoutes from "./routes/socketRoutes.js";
+// import { setSocketInstance } from "./controllers/socketController.js";
+ 
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
+dotenv.config();
+
+//setSocketInstance(io);
+
+await connectDB();
+
+app.use(cors());
+app.use(express.json());
+//app.use("/api/socket", socketRoutes);
+
+// ========== UPLOADS SETUP ==========
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// serve static uploads
+app.use('/uploads', express.static(uploadsDir));
+
+// Multer config
+const ALLOWED_MIMES = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'text/plain': 'txt'
+};
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = mime.extension(file.mimetype) || '';
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    cb(null, `${unique}.${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (req, file, cb) => {
+    if (Object.keys(ALLOWED_MIMES).includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Invalid file type'));
+  }
+});
+
+// ========== SINGLE FILE UPLOAD (with optional caption) ==========
+app.post('/uploadFile', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const { caption = '' } = req.body;
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    res.json({
+      success: true,
+      attachment: {
+        url: fileUrl,
+        filename: req.file.originalname,
+        mime: req.file.mimetype,
+        size: req.file.size,
+        caption: String(caption || '')
+      }
+    });
+  } catch (err) {
+    console.error('❌ upload error:', err.message);
+    res.status(500).json({ error: 'File upload failed' });
+  }
+});
+
+// ========== MULTI FILE UPLOAD (with optional captions[]) ==========
+app.post('/uploadFiles', upload.array('files', 10), (req, res) => {
+  try {
+    if (!req.files?.length) return res.status(400).json({ error: 'No files uploaded' });
+
+    let { captions } = req.body;
+    if (typeof captions === 'string') {
+      try {
+        const maybeJson = JSON.parse(captions);
+        captions = Array.isArray(maybeJson) ? maybeJson : [captions];
+      } catch {
+        captions = [captions];
+      }
+    } else if (!Array.isArray(captions)) {
+      captions = [];
+    }
+
+    const attachments = req.files.map((f, idx) => {
+      const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${f.filename}`;
+      return {
+        url: fileUrl,
+        filename: f.originalname,
+        mime: f.mimetype,
+        size: f.size,
+        caption: String(captions[idx] || '')
+      };
+    });
+
+    res.json({ success: true, attachments });
+  } catch (err) {
+    console.error('❌ multi upload error:', err.message);
+    res.status(500).json({ error: 'Files upload failed' });
+  }
+});
+
+// ========== ROUTES ==========
+app.use('/', uploadpdf);
+app.use('/api', bidRoutes);
+//app.use('/api', followRouter(io));
+app.use('/api', reviewRoutes);
+app.use('/api', locationRoutes);
+app.use('/api', countRoutes)
+app.use("/api", transactionRoutes);
+app.use('/api', SkipRoute);
+
+// ========== Mongoose Message Schema (with caption & activeStatus & negotiateAmount) ==========
+const attachmentSchema = new mongoose.Schema(
+  {
+    url: String,
+    filename: String,
+    mime: String,
+    size: Number,
+    caption: { type: String, default: '' }
+  },
+  { _id: false }
+);
+
+const amountHistorySchema = new mongoose.Schema(
+  {
+    amount: { type: Number, default: 0 },
+    addedBy: { type: String, default: '' }, // senderId jo amount add kar raha hai
+    addedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: { type: String, default: '' },
+    attachments: { type: [attachmentSchema], default: [] },
+
+    // message delivery status
+    status: {
+      type: String,
+      enum: ['sent', 'delivered', 'seen'],
+      default: 'sent'
+    },
+
+    isRead: { type: Boolean, default: false },
+
+    activeStatus: {
+      type: String,
+      enum: ['accept', 'negotiate', 'none'],
+      default: 'none'
+    },
+  
+    paymentStatus: {
+      type: String,
+      enum: ['pending', 'completed', 'failed'],
+      default: 'pending'
+    },
+
+    // ✅ Current amount (single latest)
+    getCurrentAmount: { type: Number, default: 0 },
+
+    // ✅ All amounts history array
+    amountHistory: { type: [amountHistorySchema], default: [] },
+    // negotiated amount (optional)
+    negotiateAmount: { type: Number, default: 0 }
+  },
+  { timestamps: true }
+);
+
+const Message = mongoose.model('Message', messageSchema);
+
+// DEMO FCM token (fallback)
+const DEMO_FCM_TOKEN =
+  process.env.DEMO_FCM_TOKEN ||
+  'dmX7Q1g_SmWALfFTVL6tIC:APA91bGYxJ0uuCeZJOoVKGGenRuaFV-WkSuLkCErZOZ0ZHRC8ciTIUG8DxwSZS6rcTNB_pdxHSq8CS0fTUE406ebpG-iz8gZ0FwZreKhbB3O_ZxoRcAblEw';
+
+// Send Push Notification helper
+async function sendPushNotification(token, title, body, data = {}) {
+  try {
+    const targetToken = token || DEMO_FCM_TOKEN;
+    const message = {
+      token: targetToken,
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      android: { priority: 'high', notification: { sound: 'default' } },
+      apns: { payload: { aps: { sound: 'default' } } }
+    };
+    // await admin.messaging().send(message);
+    console.log(`✅ Push sent to ${targetToken}`);
+  } catch (error) {
+    console.error('❌ Push error:', error.message);
+  }
+}
+
+// ========== User token routes ==========
+app.post('/updateToken', async (req, res) => {
+  const { userId, fcmToken } = req.body;
+  try {
+    await User.findOneAndUpdate(
+      { userId },
+      { fcmToken },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Error updating token:', err.message);
+    res.status(500).json({ error: 'Failed to update token' });
+  }
+});
+
+app.get('/getUserToken/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findOne({ userId }).select('fcmToken');
+    res.json(user || { fcmToken: null });
+  } catch (err) {
+    console.error('❌ Error fetching token:', err.message);
+    res.status(500).json({ error: 'Failed to fetch token' });
+  }
+});
+
+// ========== PAYMENT STATUS ROUTES & SOCKET ==========
+
+// REST API: Update paymentStatus
+app.post('/updatePaymentStatus', async (req, res) => {
+  const { senderId, receiverId, paymentStatus } = req.body;
+  try {
+    if (!['pending', 'completed', 'failed'].includes(paymentStatus)) {
+      return res.status(400).json({ error: 'Invalid paymentStatus' });
+    }
+    // Upsert - sender+receiver pair ke liye
+    const updated = await Message.findOneAndUpdate(
+      { senderId, receiverId },
+      { senderId, receiverId, paymentStatus, text: '', status: 'sent', isRead: false, activeStatus: 'none', negotiateAmount: 0 },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    const payload = {
+      paymentStatus: updated.paymentStatus,
+      senderId: updated.senderId,
+      receiverId: updated.receiverId,
+    };
+
+    io.to(senderId).emit('payment_status_updated', payload);
+    io.to(receiverId).emit('payment_status_updated', payload);
+
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('❌ Error updating paymentStatus:', err.message);
+    res.status(500).json({ error: 'Failed to update paymentStatus' });
+  }
+});
+
+app.get('/getPaymentStatus', async (req, res) => {
+  const { senderId, receiverId } = req.query;
+  try {
+    const messages = await Message.find(
+      {
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      }
+    ).select('paymentStatus senderId receiverId -_id');
+
+    if (!messages.length) return res.status(404).json({ error: 'No payment status found' });
+
+    const senderToReceiver = messages.find(m => m.senderId === senderId && m.receiverId === receiverId);
+    const receiverToSender = messages.find(m => m.senderId === receiverId && m.receiverId === senderId);
+
+    res.json({
+      senderToReceiver: senderToReceiver
+        ? { senderId: senderToReceiver.senderId, receiverId: senderToReceiver.receiverId, paymentStatus: senderToReceiver.paymentStatus }
+        : null,
+      receiverToSender: receiverToSender
+        ? { senderId: receiverToSender.senderId, receiverId: receiverToSender.receiverId, paymentStatus: receiverToSender.paymentStatus }
+        : null,
+    });
+  } catch (err) {
+    console.error('❌ Error fetching paymentStatus:', err.message);
+    res.status(500).json({ error: 'Failed to fetch paymentStatus' });
+  }
+});
+// ========== SOCKET.IO ==========
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  socket.on('join', ({ userId }) => {
+    if (userId) {
+      socket.join(userId);
+      console.log(`User ${userId} joined their room`);
+    }
+  });
+
+  // send_message supports attachments WITH captions + activeStatus + negotiateAmount
+  socket.on('send_message', async (data) => {
+    try {
+      // expected:
+      // { senderId, receiverId, text, username, attachments: [{url, filename, mime, size, caption}], activeStatus, negotiateAmount }
+      const {
+        senderId,
+        receiverId,
+        text = '',
+        username,
+        attachments = [],
+        activeStatus = 'none',
+        negotiateAmount = 0
+      } = data;
+
+      // ensure negotiateAmount is a Number (or 0)
+      const negotiateVal =
+        negotiateAmount === null || negotiateAmount === undefined
+          ? 0
+          : Number(negotiateAmount) || 0;
+
+      const newMessage = new Message({
+        senderId,
+        receiverId,
+        text,
+        attachments,
+        activeStatus,
+        negotiateAmount: negotiateVal
+      });
+
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const payload = {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        attachments,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: savedMessage.status,
+        activeStatus: savedMessage.activeStatus,
+        negotiateAmount: savedMessage.negotiateAmount || 0
+      };
+
+      // emit to both sender and receiver
+      io.to(receiverId).emit('receive_message', payload);
+      io.to(senderId).emit('receive_message', payload);
+
+      // unread count for receiver from this sender
+      const unreadCount = await Message.countDocuments({
+        receiverId,
+        senderId,
+        isRead: false
+      });
+
+      io.to(receiverId).emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: unreadCount
+      });
+
+      // push notification
+      const recipientUser = await User.findOne({ userId: receiverId }).select('fcmToken');
+
+      let notifyBody =
+        (text && text.length ? text.slice(0, 100) : '') ||
+        (attachments && attachments.length
+          ? `${username || 'Someone'} sent an attachment`
+          : 'You have a new message');
+
+      await sendPushNotification(
+        recipientUser?.fcmToken || DEMO_FCM_TOKEN,
+        username || 'New Message',
+        notifyBody,
+        {
+          type: 'chat_message',
+          senderId,
+          receiverId,
+          messageId: savedMessage._id.toString(),
+          hasAttachments: attachments.length ? '1' : '0',
+          activeStatus: savedMessage.activeStatus || 'none',
+          negotiateAmount: String(savedMessage.negotiateAmount || 0)
+        }
+      );
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(messageId, { status: 'delivered' }, { new: true });
+      if (updated) {
+        // emit update only (scoped) - you can change to io.emit if you prefer global
+        io.to(updated.receiverId).emit('message_status_update', { messageId, status: 'delivered' });
+        io.to(updated.senderId).emit('message_status_update', { messageId, status: 'delivered' });
+      } else {
+        io.emit('message_status_update', { messageId, status: 'delivered' });
+      }
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(
+        messageId,
+        { status: 'seen', isRead: true },
+        { new: true }
+      );
+      if (updated) {
+        io.to(updated.receiverId).emit('message_status_update', { messageId, status: 'seen' });
+        io.to(updated.senderId).emit('message_status_update', { messageId, status: 'seen' });
+
+        const unreadCount = await Message.countDocuments({
+          receiverId: updated.receiverId,
+          senderId: updated.senderId,
+          isRead: false
+        });
+
+        io.to(updated.receiverId).emit('unread_count_update', {
+          userId: updated.receiverId,
+          from: updated.senderId,
+          count: unreadCount
+        });
+      } else {
+        // fallback emit
+        io.emit('message_status_update', { messageId, status: 'seen' });
+      }
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+
+      io.to(receiverId).emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: 0
+      });
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+  
+  socket.on('transaction_updated', async (data) => {
+    try {
+      const {
+        senderId,
+        receiverId,
+        finalPrice,
+        ActiveStatus,           // "Accept" ya "ACCEPT" ya "accept"
+        meta = {},
+      } = data;
+
+      if (!senderId || !receiverId) {
+        console.log("❌ transaction_updated → missing senderId or receiverId");
+        return;
+      }
+
+      const normalizedStatus = String(ActiveStatus || '').toLowerCase().trim();
+
+      console.log(`[TXN] ${senderId} → ${receiverId} | Status: ${normalizedStatus} | ₹${finalPrice || '?'}`);
+
+      const broadcastPayload = {
+        finalPrice: finalPrice ?? null,
+        ActiveStatus: normalizedStatus === 'accept' ? 'Accept' : normalizedStatus,
+        normalizedStatus,
+        fromUser: senderId,
+        meta,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Dono ko bhejo — important!
+      io.to(senderId).emit('transaction_updated', broadcastPayload);
+      io.to(receiverId).emit('transaction_updated', broadcastPayload);
+
+      // Optional: Agar accept hua to saare pending messages ko seen kar do
+      if (normalizedStatus === 'accept') {
+        await Message.updateMany(
+          {
+            $or: [
+              { senderId, receiverId },
+              { senderId: receiverId, receiverId: senderId }
+            ],
+            isRead: false
+          },
+          { isRead: true, status: 'seen' }
+        );
+
+        // Reset unread counts
+        io.to(senderId).emit('unread_count_update', { userId: senderId, from: receiverId, count: 0 });
+        io.to(receiverId).emit('unread_count_update', { userId: receiverId, from: senderId, count: 0 });
+      }
+
+    } catch (err) {
+      console.error("❌ transaction_updated socket error:", err);
+    }
+  });
+
+  // ✅ REALTIME PAYMENT STATUS UPDATE - place inside io.on('connection', ...) block
+  socket.on('update_payment_status', async ({ senderId, receiverId, paymentStatus }) => {
+    try {
+      if (!['pending', 'completed', 'failed'].includes(paymentStatus)) {
+        socket.emit('payment_status_error', { error: 'Invalid paymentStatus' });
+        return;
+      }
+
+      if (!senderId || !receiverId) {
+        socket.emit('payment_status_error', { error: 'Missing senderId or receiverId' });
+        return;
+      }
+
+      const updated = await Message.findOneAndUpdate(
+        { senderId, receiverId },
+        {
+          senderId,
+          receiverId,
+          paymentStatus,
+          text: '',
+          status: 'sent',
+          isRead: false,
+          activeStatus: 'none',
+          negotiateAmount: 0
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+
+      const payload = {
+        senderId: updated.senderId,
+        receiverId: updated.receiverId,
+        paymentStatus: updated.paymentStatus,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Emit to BOTH sender and receiver — same as get_payment_status pattern
+      io.to(senderId).emit('payment_status_updated', payload);
+      io.to(receiverId).emit('payment_status_updated', payload);
+
+      console.log(`[PAYMENT] ${senderId} → ${receiverId} | Status: ${paymentStatus}`);
+
+    } catch (err) {
+      console.error('❌ Socket update_payment_status error:', err.message);
+      socket.emit('payment_status_error', { error: 'Failed to update payment status' });
+    }
+  });
+  // SOCKET: Realtime paymentStatus update
+  socket.on('get_payment_status', async ({ senderId, receiverId }) => {
+    try {
+      const messages = await Message.find({
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      }).sort({ createdAt: -1 }).select('paymentStatus senderId receiverId createdAt');
+
+      // Agar koi message nahi mila
+      if (!messages.length) {
+        socket.emit('payment_status_result', {
+          senderToReceiver: { senderId, receiverId, paymentStatus: 'pending' },
+          receiverToSender: { senderId: receiverId, receiverId: senderId, paymentStatus: 'pending' }
+        });
+        return;
+      }
+
+      const senderToReceiver = messages.find(
+        m => String(m.senderId) === String(senderId) && String(m.receiverId) === String(receiverId)
+      );
+      const receiverToSender = messages.find(
+        m => String(m.senderId) === String(receiverId) && String(m.receiverId) === String(senderId)
+      );
+
+      const payload = {
+        senderToReceiver: {
+          senderId,
+          receiverId,
+          paymentStatus: senderToReceiver?.paymentStatus || 'pending'
+        },
+        receiverToSender: {
+          senderId: receiverId,
+          receiverId: senderId,
+          paymentStatus: receiverToSender?.paymentStatus || 'pending'
+        }
+      };
+
+      io.to(senderId).emit('payment_status_result', payload);
+      io.to(receiverId).emit('payment_status_result', payload);
+
+    } catch (err) {
+      console.error('❌ Socket get_payment_status error:', err.message);
+      socket.emit('payment_status_error', { error: 'Failed to fetch payment status' });
+    }
+  });
+
+  // ✅ REALTIME - Amount array me add karo
+  socket.on('add_amount_history', async ({ senderId, receiverId, amount, addedBy }) => {
+    try {
+      if (!senderId || !receiverId) {
+        socket.emit('amount_history_error', { error: 'Missing senderId or receiverId' });
+        return;
+      }
+      if (amount === undefined || isNaN(Number(amount))) {
+        socket.emit('amount_history_error', { error: 'Invalid amount' });
+        return;
+      }
+
+      const newEntry = {
+        amount: Number(amount),
+        addedBy: addedBy || senderId,
+        addedAt: new Date()
+      };
+
+      const updated = await Message.findOneAndUpdate(
+        { senderId, receiverId },
+        {
+          $push: { amountHistory: newEntry },
+          $set: { getCurrentAmount: Number(amount) }
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+
+      const payload = {
+        senderId: updated.senderId,
+        receiverId: updated.receiverId,
+        getCurrentAmount: updated.getCurrentAmount,
+        amountHistory: updated.amountHistory,
+        latestEntry: newEntry,
+        timestamp: new Date().toISOString()
+      };
+
+      // ✅ Dono ko realtime bhejo
+      io.to(senderId).emit('amount_history_updated', payload);
+      io.to(receiverId).emit('amount_history_updated', payload);
+
+      console.log(`[HISTORY] ${senderId} → ${receiverId} | ₹${amount} added`);
+    } catch (err) {
+      console.error('❌ add_amount_history error:', err.message);
+      socket.emit('amount_history_error', { error: 'Failed to add amount' });
+    }
+  });
+
+  // ✅ REALTIME - Saari history fetch karo
+  socket.on('get_amount_history', async ({ senderId, receiverId }) => {
+    try {
+      if (!senderId || !receiverId) {
+        socket.emit('amount_history_error', { error: 'Missing senderId or receiverId' });
+        return;
+      }
+
+      const messages = await Message.find({
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      }).select('amountHistory getCurrentAmount senderId receiverId');
+
+      const senderToReceiver = messages.find(
+        m => String(m.senderId) === String(senderId) && String(m.receiverId) === String(receiverId)
+      );
+      const receiverToSender = messages.find(
+        m => String(m.senderId) === String(receiverId) && String(m.receiverId) === String(senderId)
+      );
+
+      const payload = {
+        senderToReceiver: {
+          senderId,
+          receiverId,
+          getCurrentAmount: senderToReceiver?.getCurrentAmount ?? 0,
+          amountHistory: senderToReceiver?.amountHistory ?? []
+        },
+        receiverToSender: {
+          senderId: receiverId,
+          receiverId: senderId,
+          getCurrentAmount: receiverToSender?.getCurrentAmount ?? 0,
+          amountHistory: receiverToSender?.amountHistory ?? []
+        }
+      };
+
+      io.to(senderId).emit('amount_history_result', payload);
+      io.to(receiverId).emit('amount_history_result', payload);
+
+    } catch (err) {
+      console.error('❌ get_amount_history error:', err.message);
+      socket.emit('amount_history_error', { error: 'Failed to get amount history' });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ========== MESSAGE & CHAT ROUTES ==========
+
+app.post('/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+
+  const formatTime = (date) =>
+    date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const formatDateLabel = (date) => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const msgDate = new Date(date);
+
+    if (msgDate.toDateString() === today.toDateString()) return 'Today';
+    if (msgDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return msgDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: msgDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+    });
+  };
+
+  try {
+    const messages = await mongoose
+      .model('Message')
+      .find({
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      })
+      .sort({ createdAt: 1 });
+
+    const grouped = [];
+    let currentLabel = '';
+
+    messages.forEach((msg) => {
+      const label = formatDateLabel(msg.createdAt);
+      if (label !== currentLabel) {
+        grouped.push({ type: 'label', label });
+        currentLabel = label;
+      }
+      grouped.push({
+        type: 'message',
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        attachments: msg.attachments || [],
+        status: msg.status,
+        isRead: msg.isRead,
+        activeStatus: msg.activeStatus || 'none',
+        negotiateAmount: msg.negotiateAmount || 0,
+        timestamp: msg.createdAt,
+        time: formatTime(msg.createdAt)
+      });
+    });
+
+    res.json(grouped);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+app.post('/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const messages = await mongoose
+      .model('Message')
+      .find({
+        $or: [{ senderId: userId }, { receiverId: userId }]
+      })
+      .sort({ createdAt: -1 });
+
+    const unique = new Map();
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!unique.has(participants)) {
+        const chatWith = msg.senderId === userId ? msg.receiverId : msg.senderId;
+
+        const baseLastMessage =
+          msg.text ||
+          (msg.attachments?.length
+            ? msg.attachments[0].caption
+              ? `Attachment: ${msg.attachments[0].caption}`
+              : 'Attachment'
+            : '');
+
+        const lastMessage =
+          msg.activeStatus && msg.activeStatus !== 'none'
+            ? `${baseLastMessage || 'Status'} [${msg.activeStatus}]`
+            : baseLastMessage;
+
+        unique.set(participants, {
+          chatWith,
+          lastMessage,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          timestamp: msg.createdAt,
+          unreadCount: 0
+        });
+      }
+    });
+
+    const unreadCounts = await mongoose
+      .model('Message')
+      .aggregate([
+        { $match: { receiverId: userId, isRead: false } },
+        { $group: { _id: '$senderId', count: { $sum: 1 } } }
+      ]);
+
+    const unreadMap = {};
+    unreadCounts.forEach((u) => (unreadMap[u._id] = u.count));
+
+    const chatList = Array.from(unique.values()).map((chat) => ({
+      ...chat,
+      unreadCount: unreadMap[chat.chatWith] || 0
+    }));
+
+    res.json(chatList);
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+app.post('/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const unread = await mongoose
+      .model('Message')
+      .aggregate([
+        { $match: { receiverId: userId, isRead: false } },
+        { $group: { _id: '$senderId', count: { $sum: 1 } } }
+      ]);
+
+    const unreadMap = {};
+    unread.forEach((item) => (unreadMap[item._id] = item.count));
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+// ========== CURRENT AMOUNT ROUTES ==========
+
+// ========== AMOUNT HISTORY ROUTES ==========
+
+// ✅ POST - Naya amount array me push karo
+app.post('/addAmountHistory', async (req, res) => {
+  const { senderId, receiverId, amount, addedBy } = req.body;
+  try {
+    if (!senderId || !receiverId) {
+      return res.status(400).json({ error: 'senderId and receiverId required' });
+    }
+    if (amount === undefined || isNaN(Number(amount))) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+
+    const newEntry = {
+      amount: Number(amount),
+      addedBy: addedBy || senderId,
+      addedAt: new Date()
+    };
+
+    const updated = await Message.findOneAndUpdate(
+      { senderId, receiverId },
+      {
+        $push: { amountHistory: newEntry },       // ✅ Array me push
+        $set: { getCurrentAmount: Number(amount) } // ✅ Current amount bhi update
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    const payload = {
+      senderId: updated.senderId,
+      receiverId: updated.receiverId,
+      getCurrentAmount: updated.getCurrentAmount,
+      amountHistory: updated.amountHistory,
+      latestEntry: newEntry,
+      timestamp: new Date().toISOString()
+    };
+
+    // ✅ Realtime dono ko bhejo
+    io.to(senderId).emit('amount_history_updated', payload);
+    io.to(receiverId).emit('amount_history_updated', payload);
+
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('❌ Error adding amount history:', err.message);
+    res.status(500).json({ error: 'Failed to add amount history' });
+  }
+});
+
+// ✅ GET - Saari amount history fetch karo
+app.get('/getAmountHistory', async (req, res) => {
+  const { senderId, receiverId } = req.query;
+  try {
+    if (!senderId || !receiverId) {
+      return res.status(400).json({ error: 'senderId and receiverId required' });
+    }
+
+    const messages = await Message.find({
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId }
+      ]
+    }).select('amountHistory getCurrentAmount senderId receiverId');
+
+    const senderToReceiver = messages.find(
+      m => String(m.senderId) === String(senderId) && String(m.receiverId) === String(receiverId)
+    );
+    const receiverToSender = messages.find(
+      m => String(m.senderId) === String(receiverId) && String(m.receiverId) === String(senderId)
+    );
+
+    res.json({
+      senderToReceiver: {
+        senderId,
+        receiverId,
+        getCurrentAmount: senderToReceiver?.getCurrentAmount ?? 0,
+        amountHistory: senderToReceiver?.amountHistory ?? []
+      },
+      receiverToSender: {
+        senderId: receiverId,
+        receiverId: senderId,
+        getCurrentAmount: receiverToSender?.getCurrentAmount ?? 0,
+        amountHistory: receiverToSender?.amountHistory ?? []
+      }
+    });
+  } catch (err) {
+    console.error('❌ Error fetching amount history:', err.message);
+    res.status(500).json({ error: 'Failed to fetch amount history' });
+  }
+});
+
+// ✅ DELETE - Poori history clear karo (optional)
+app.post('/clearAmountHistory', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+  try {
+    const updated = await Message.findOneAndUpdate(
+      { senderId, receiverId },
+      { $set: { amountHistory: [], getCurrentAmount: 0 } },
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).json({ error: 'Record not found' });
+
+    const payload = {
+      senderId,
+      receiverId,
+      amountHistory: [],
+      getCurrentAmount: 0,
+      timestamp: new Date().toISOString()
+    };
+
+    io.to(senderId).emit('amount_history_cleared', payload);
+    io.to(receiverId).emit('amount_history_cleared', payload);
+
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('❌ Error clearing amount history:', err.message);
+    res.status(500).json({ error: 'Failed to clear amount history' });
+  }
+});
+// ========== ADD THIS INSIDE io.on('connection', (socket) => { ... }) ==========
+// Place this AFTER the existing socket.on('mark_as_read', ...) block and BEFORE socket.on('disconnect', ...)
+
+// ✅ REALTIME DEAL ACCEPTANCE - broadcasts to BOTH sender and receiver
+
+
+// ========== START SERVER ==========
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// server.js
+import dotenv from 'dotenv';
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import mongoose from 'mongoose';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
+import mime from 'mime-types';
+// your project imports
+import connectDB from './db/connectDB.js';
+//import followRouter from './routes/follow.js';
+//import admin from './firebase.js';
+import User from './models/User.js';
+import bidRoutes from './routes/BidRoutes.js';
+import { uploadpdf } from './upload_pdf/uploadpdf.js';
+import reviewRoutes from './routes/reviewRoutes.js';
+import transactionRoutes from './routes/transactions.js';
+import locationRoutes from './routes/locationRoutes.js';
+import countRoutes from './routes/countRoutes.js';
+import SkipRoute from './routes/SkipRoute.js';
+// import socketRoutes from "./routes/socketRoutes.js";
+// import { setSocketInstance } from "./controllers/socketController.js";
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
+dotenv.config();
+
+//setSocketInstance(io);
+
+await connectDB();
+
+app.use(cors());
+app.use(express.json());
+//app.use("/api/socket", socketRoutes);
+
+// ========== UPLOADS SETUP ==========
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+// serve static uploads
+app.use('/uploads', express.static(uploadsDir));
+
+// Multer config
+const ALLOWED_MIMES = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'text/plain': 'txt'
+};
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = mime.extension(file.mimetype) || '';
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    cb(null, `${unique}.${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (req, file, cb) => {
+    if (Object.keys(ALLOWED_MIMES).includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Invalid file type'));
+  }
+});
+
+// ========== SINGLE FILE UPLOAD (with optional caption) ==========
+app.post('/uploadFile', upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const { caption = '' } = req.body;
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    res.json({
+      success: true,
+      attachment: {
+        url: fileUrl,
+        filename: req.file.originalname,
+        mime: req.file.mimetype,
+        size: req.file.size,
+        caption: String(caption || '')
+      }
+    });
+  } catch (err) {
+    console.error('❌ upload error:', err.message);
+    res.status(500).json({ error: 'File upload failed' });
+  }
+});
+
+// ========== MULTI FILE UPLOAD (with optional captions[]) ==========
+app.post('/uploadFiles', upload.array('files', 10), (req, res) => {
+  try {
+    if (!req.files?.length) return res.status(400).json({ error: 'No files uploaded' });
+
+    let { captions } = req.body;
+    if (typeof captions === 'string') {
+      try {
+        const maybeJson = JSON.parse(captions);
+        captions = Array.isArray(maybeJson) ? maybeJson : [captions];
+      } catch {
+        captions = [captions];
+      }
+    } else if (!Array.isArray(captions)) {
+      captions = [];
+    }
+
+    const attachments = req.files.map((f, idx) => {
+      const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${f.filename}`;
+      return {
+        url: fileUrl,
+        filename: f.originalname,
+        mime: f.mimetype,
+        size: f.size,
+        caption: String(captions[idx] || '')
+      };
+    });
+
+    res.json({ success: true, attachments });
+  } catch (err) {
+    console.error('❌ multi upload error:', err.message);
+    res.status(500).json({ error: 'Files upload failed' });
+  }
+});
+
+// ========== ROUTES ==========
+app.use('/', uploadpdf);
+app.use('/api', bidRoutes);
+//app.use('/api', followRouter(io));
+app.use('/api', reviewRoutes);
+app.use('/api', locationRoutes);
+app.use('/api', countRoutes)
+app.use("/api", transactionRoutes);
+app.use('/api', SkipRoute);
+
+// ========== Mongoose Message Schema (with caption & activeStatus & negotiateAmount) ==========
+const attachmentSchema = new mongoose.Schema(
+  {
+    url: String,
+    filename: String,
+    mime: String,
+    size: Number,
+    caption: { type: String, default: '' }
+  },
+  { _id: false }
+);
+
+const amountHistorySchema = new mongoose.Schema(
+  {
+    amount: { type: Number, default: 0 },
+    addedBy: { type: String, default: '' }, // senderId jo amount add kar raha hai
+    addedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
+const messageSchema = new mongoose.Schema(
+  {
+    senderId: String,
+    receiverId: String,
+    text: { type: String, default: '' },
+    attachments: { type: [attachmentSchema], default: [] },
+
+    // message delivery status
+    status: {
+      type: String,
+      enum: ['sent', 'delivered', 'seen'],
+      default: 'sent'
+    },
+
+    isRead: { type: Boolean, default: false },
+
+    activeStatus: {
+      type: String,
+      enum: ['accept', 'negotiate', 'none'],
+      default: 'none'
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ['pending', 'completed', 'failed'],
+      default: 'pending'
+    },
+
+    // ✅ Current amount (single latest)
+    getCurrentAmount: { type: Number, default: 0 },
+
+    // ✅ All amounts history array
+    amountHistory: { type: [amountHistorySchema], default: [] },
+    // negotiated amount (optional)
+    negotiateAmount: { type: Number, default: 0 }
+  },
+  { timestamps: true }
+);
+
+const Message = mongoose.model('Message', messageSchema);
+
+// DEMO FCM token (fallback)
+const DEMO_FCM_TOKEN =
+  process.env.DEMO_FCM_TOKEN ||
+  'dmX7Q1g_SmWALfFTVL6tIC:APA91bGYxJ0uuCeZJOoVKGGenRuaFV-WkSuLkCErZOZ0ZHRC8ciTIUG8DxwSZS6rcTNB_pdxHSq8CS0fTUE406ebpG-iz8gZ0FwZreKhbB3O_ZxoRcAblEw';
+
+// Send Push Notification helper
+async function sendPushNotification(token, title, body, data = {}) {
+  try {
+    const targetToken = token || DEMO_FCM_TOKEN;
+    const message = {
+      token: targetToken,
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      android: { priority: 'high', notification: { sound: 'default' } },
+      apns: { payload: { aps: { sound: 'default' } } }
+    };
+    // await admin.messaging().send(message);
+    console.log(`✅ Push sent to ${targetToken}`);
+  } catch (error) {
+    console.error('❌ Push error:', error.message);
+  }
+}
+
+// ========== User token routes ==========
+app.post('/updateToken', async (req, res) => {
+  const { userId, fcmToken } = req.body;
+  try {
+    await User.findOneAndUpdate(
+      { userId },
+      { fcmToken },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Error updating token:', err.message);
+    res.status(500).json({ error: 'Failed to update token' });
+  }
+});
+
+app.get('/getUserToken/:userId', async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findOne({ userId }).select('fcmToken');
+    res.json(user || { fcmToken: null });
+  } catch (err) {
+    console.error('❌ Error fetching token:', err.message);
+    res.status(500).json({ error: 'Failed to fetch token' });
+  }
+});
+
+// ========== PAYMENT STATUS ROUTES & SOCKET ==========
+
+// REST API: Update paymentStatus
+app.post('/updatePaymentStatus', async (req, res) => {
+  const { senderId, receiverId, paymentStatus } = req.body;
+  try {
+    if (!['pending', 'completed', 'failed'].includes(paymentStatus)) {
+      return res.status(400).json({ error: 'Invalid paymentStatus' });
+    }
+    // Upsert - sender+receiver pair ke liye
+    const updated = await Message.findOneAndUpdate(
+      { senderId, receiverId },
+      { senderId, receiverId, paymentStatus, text: '', status: 'sent', isRead: false, activeStatus: 'none', negotiateAmount: 0 },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    const payload = {
+      paymentStatus: updated.paymentStatus,
+      senderId: updated.senderId,
+      receiverId: updated.receiverId,
+    };
+
+    io.to(senderId).emit('payment_status_updated', payload);
+    io.to(receiverId).emit('payment_status_updated', payload);
+
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('❌ Error updating paymentStatus:', err.message);
+    res.status(500).json({ error: 'Failed to update paymentStatus' });
+  }
+});
+
+app.get('/getPaymentStatus', async (req, res) => {
+  const { senderId, receiverId } = req.query;
+  try {
+    const messages = await Message.find(
+      {
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      }
+    ).select('paymentStatus senderId receiverId -_id');
+
+    if (!messages.length) return res.status(404).json({ error: 'No payment status found' });
+
+    const senderToReceiver = messages.find(m => m.senderId === senderId && m.receiverId === receiverId);
+    const receiverToSender = messages.find(m => m.senderId === receiverId && m.receiverId === senderId);
+
+    res.json({
+      senderToReceiver: senderToReceiver
+        ? { senderId: senderToReceiver.senderId, receiverId: senderToReceiver.receiverId, paymentStatus: senderToReceiver.paymentStatus }
+        : null,
+      receiverToSender: receiverToSender
+        ? { senderId: receiverToSender.senderId, receiverId: receiverToSender.receiverId, paymentStatus: receiverToSender.paymentStatus }
+        : null,
+    });
+  } catch (err) {
+    console.error('❌ Error fetching paymentStatus:', err.message);
+    res.status(500).json({ error: 'Failed to fetch paymentStatus' });
+  }
+});
+// ========== SOCKET.IO ==========
+io.on('connection', (socket) => {
+  console.log(`🟢 User connected: ${socket.id}`);
+
+  socket.on('join', ({ userId }) => {
+    if (userId) {
+      socket.join(userId);
+      console.log(`User ${userId} joined their room`);
+    }
+  });
+
+  // send_message supports attachments WITH captions + activeStatus + negotiateAmount
+  socket.on('send_message', async (data) => {
+    try {
+      // expected:
+      // { senderId, receiverId, text, username, attachments: [{url, filename, mime, size, caption}], activeStatus, negotiateAmount }
+      const {
+        senderId,
+        receiverId,
+        text = '',
+        username,
+        attachments = [],
+        activeStatus = 'none',
+        negotiateAmount = 0
+      } = data;
+
+      // ensure negotiateAmount is a Number (or 0)
+      const negotiateVal =
+        negotiateAmount === null || negotiateAmount === undefined
+          ? 0
+          : Number(negotiateAmount) || 0;
+
+      const newMessage = new Message({
+        senderId,
+        receiverId,
+        text,
+        attachments,
+        activeStatus,
+        negotiateAmount: negotiateVal
+      });
+
+      const savedMessage = await newMessage.save();
+
+      const formattedTime = savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      const payload = {
+        _id: savedMessage._id,
+        senderId,
+        receiverId,
+        text,
+        attachments,
+        timestamp: savedMessage.createdAt,
+        time: formattedTime,
+        status: savedMessage.status,
+        activeStatus: savedMessage.activeStatus,
+        negotiateAmount: savedMessage.negotiateAmount || 0
+      };
+
+      // emit to both sender and receiver
+      io.to(receiverId).emit('receive_message', payload);
+      io.to(senderId).emit('receive_message', payload);
+
+      // unread count for receiver from this sender
+      const unreadCount = await Message.countDocuments({
+        receiverId,
+        senderId,
+        isRead: false
+      });
+
+      io.to(receiverId).emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: unreadCount
+      });
+
+      // push notification
+      const recipientUser = await User.findOne({ userId: receiverId }).select('fcmToken');
+
+      let notifyBody =
+        (text && text.length ? text.slice(0, 100) : '') ||
+        (attachments && attachments.length
+          ? `${username || 'Someone'} sent an attachment`
+          : 'You have a new message');
+
+      await sendPushNotification(
+        recipientUser?.fcmToken || DEMO_FCM_TOKEN,
+        username || 'New Message',
+        notifyBody,
+        {
+          type: 'chat_message',
+          senderId,
+          receiverId,
+          messageId: savedMessage._id.toString(),
+          hasAttachments: attachments.length ? '1' : '0',
+          activeStatus: savedMessage.activeStatus || 'none',
+          negotiateAmount: String(savedMessage.negotiateAmount || 0)
+        }
+      );
+    } catch (err) {
+      console.error('❌ Error saving message:', err.message);
+    }
+  });
+
+  socket.on('message_delivered', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(messageId, { status: 'delivered' }, { new: true });
+      if (updated) {
+        // emit update only (scoped) - you can change to io.emit if you prefer global
+        io.to(updated.receiverId).emit('message_status_update', { messageId, status: 'delivered' });
+        io.to(updated.senderId).emit('message_status_update', { messageId, status: 'delivered' });
+      } else {
+        io.emit('message_status_update', { messageId, status: 'delivered' });
+      }
+    } catch (err) {
+      console.error('❌ Error updating delivered:', err.message);
+    }
+  });
+
+  socket.on('message_seen', async ({ messageId }) => {
+    try {
+      const updated = await Message.findByIdAndUpdate(
+        messageId,
+        { status: 'seen', isRead: true },
+        { new: true }
+      );
+      if (updated) {
+        io.to(updated.receiverId).emit('message_status_update', { messageId, status: 'seen' });
+        io.to(updated.senderId).emit('message_status_update', { messageId, status: 'seen' });
+
+        const unreadCount = await Message.countDocuments({
+          receiverId: updated.receiverId,
+          senderId: updated.senderId,
+          isRead: false
+        });
+
+        io.to(updated.receiverId).emit('unread_count_update', {
+          userId: updated.receiverId,
+          from: updated.senderId,
+          count: unreadCount
+        });
+      } else {
+        // fallback emit
+        io.emit('message_status_update', { messageId, status: 'seen' });
+      }
+    } catch (err) {
+      console.error('❌ Error updating seen:', err.message);
+    }
+  });
+
+  socket.on('mark_as_read', async ({ senderId, receiverId }) => {
+    try {
+      await Message.updateMany(
+        { senderId, receiverId, isRead: false },
+        { isRead: true, status: 'seen' }
+      );
+
+      io.to(receiverId).emit('unread_count_update', {
+        userId: receiverId,
+        from: senderId,
+        count: 0
+      });
+    } catch (err) {
+      console.error('❌ Error marking as read:', err.message);
+    }
+  });
+
+  socket.on('transaction_updated', async (data) => {
+    try {
+      const {
+        senderId,
+        receiverId,
+        finalPrice,
+        ActiveStatus,           // "Accept" ya "ACCEPT" ya "accept"
+        meta = {},
+      } = data;
+
+      if (!senderId || !receiverId) {
+        console.log("❌ transaction_updated → missing senderId or receiverId");
+        return;
+      }
+
+      const normalizedStatus = String(ActiveStatus || '').toLowerCase().trim();
+
+      console.log(`[TXN] ${senderId} → ${receiverId} | Status: ${normalizedStatus} | ₹${finalPrice || '?'}`);
+
+      const broadcastPayload = {
+        finalPrice: finalPrice ?? null,
+        ActiveStatus: normalizedStatus === 'accept' ? 'Accept' : normalizedStatus,
+        normalizedStatus,
+        fromUser: senderId,
+        meta,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Dono ko bhejo — important!
+      io.to(senderId).emit('transaction_updated', broadcastPayload);
+      io.to(receiverId).emit('transaction_updated', broadcastPayload);
+
+      // Optional: Agar accept hua to saare pending messages ko seen kar do
+      if (normalizedStatus === 'accept') {
+        await Message.updateMany(
+          {
+            $or: [
+              { senderId, receiverId },
+              { senderId: receiverId, receiverId: senderId }
+            ],
+            isRead: false
+          },
+          { isRead: true, status: 'seen' }
+        );
+
+        // Reset unread counts
+        io.to(senderId).emit('unread_count_update', { userId: senderId, from: receiverId, count: 0 });
+        io.to(receiverId).emit('unread_count_update', { userId: receiverId, from: senderId, count: 0 });
+      }
+
+    } catch (err) {
+      console.error("❌ transaction_updated socket error:", err);
+    }
+  });
+
+  // ✅ REALTIME PAYMENT STATUS UPDATE - place inside io.on('connection', ...) block
+  socket.on('update_payment_status', async ({ senderId, receiverId, paymentStatus }) => {
+    try {
+      if (!['pending', 'completed', 'failed'].includes(paymentStatus)) {
+        socket.emit('payment_status_error', { error: 'Invalid paymentStatus' });
+        return;
+      }
+
+      if (!senderId || !receiverId) {
+        socket.emit('payment_status_error', { error: 'Missing senderId or receiverId' });
+        return;
+      }
+
+      const updated = await Message.findOneAndUpdate(
+        { senderId, receiverId },
+        {
+          senderId,
+          receiverId,
+          paymentStatus,
+          text: '',
+          status: 'sent',
+          isRead: false,
+          activeStatus: 'none',
+          negotiateAmount: 0
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+
+      const payload = {
+        senderId: updated.senderId,
+        receiverId: updated.receiverId,
+        paymentStatus: updated.paymentStatus,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Emit to BOTH sender and receiver — same as get_payment_status pattern
+      io.to(senderId).emit('payment_status_updated', payload);
+      io.to(receiverId).emit('payment_status_updated', payload);
+
+      console.log(`[PAYMENT] ${senderId} → ${receiverId} | Status: ${paymentStatus}`);
+
+    } catch (err) {
+      console.error('❌ Socket update_payment_status error:', err.message);
+      socket.emit('payment_status_error', { error: 'Failed to update payment status' });
+    }
+  });
+  // SOCKET: Realtime paymentStatus update
+  socket.on('get_payment_status', async ({ senderId, receiverId }) => {
+    try {
+      const messages = await Message.find({
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      }).sort({ createdAt: -1 }).select('paymentStatus senderId receiverId createdAt');
+
+      // Agar koi message nahi mila
+      if (!messages.length) {
+        socket.emit('payment_status_result', {
+          senderToReceiver: { senderId, receiverId, paymentStatus: 'pending' },
+          receiverToSender: { senderId: receiverId, receiverId: senderId, paymentStatus: 'pending' }
+        });
+        return;
+      }
+
+      const senderToReceiver = messages.find(
+        m => String(m.senderId) === String(senderId) && String(m.receiverId) === String(receiverId)
+      );
+      const receiverToSender = messages.find(
+        m => String(m.senderId) === String(receiverId) && String(m.receiverId) === String(senderId)
+      );
+
+      const payload = {
+        senderToReceiver: {
+          senderId,
+          receiverId,
+          paymentStatus: senderToReceiver?.paymentStatus || 'pending'
+        },
+        receiverToSender: {
+          senderId: receiverId,
+          receiverId: senderId,
+          paymentStatus: receiverToSender?.paymentStatus || 'pending'
+        }
+      };
+
+      io.to(senderId).emit('payment_status_result', payload);
+      io.to(receiverId).emit('payment_status_result', payload);
+
+    } catch (err) {
+      console.error('❌ Socket get_payment_status error:', err.message);
+      socket.emit('payment_status_error', { error: 'Failed to fetch payment status' });
+    }
+  });
+
+  // ✅ REALTIME - Amount array me add karo
+  socket.on('add_amount_history', async ({ senderId, receiverId, amount, addedBy }) => {
+    try {
+      if (!senderId || !receiverId) {
+        socket.emit('amount_history_error', { error: 'Missing senderId or receiverId' });
+        return;
+      }
+      if (amount === undefined || isNaN(Number(amount))) {
+        socket.emit('amount_history_error', { error: 'Invalid amount' });
+        return;
+      }
+
+      const newEntry = {
+        amount: Number(amount),
+        addedBy: addedBy || senderId,
+        addedAt: new Date()
+      };
+
+      const updated = await Message.findOneAndUpdate(
+        { senderId, receiverId },
+        {
+          $push: { amountHistory: newEntry },
+          $set: { getCurrentAmount: Number(amount) }
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+
+      const payload = {
+        senderId: updated.senderId,
+        receiverId: updated.receiverId,
+        getCurrentAmount: updated.getCurrentAmount,
+        amountHistory: updated.amountHistory,
+        latestEntry: newEntry,
+        timestamp: new Date().toISOString()
+      };
+
+      // ✅ Dono ko realtime bhejo
+      io.to(senderId).emit('amount_history_updated', payload);
+      io.to(receiverId).emit('amount_history_updated', payload);
+
+      console.log(`[HISTORY] ${senderId} → ${receiverId} | ₹${amount} added`);
+    } catch (err) {
+      console.error('❌ add_amount_history error:', err.message);
+      socket.emit('amount_history_error', { error: 'Failed to add amount' });
+    }
+  });
+
+  // ✅ REALTIME - Saari history fetch karo
+  socket.on('get_amount_history', async ({ senderId, receiverId }) => {
+    try {
+      if (!senderId || !receiverId) {
+        socket.emit('amount_history_error', { error: 'Missing senderId or receiverId' });
+        return;
+      }
+
+      const messages = await Message.find({
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      }).select('amountHistory getCurrentAmount senderId receiverId');
+
+      const senderToReceiver = messages.find(
+        m => String(m.senderId) === String(senderId) && String(m.receiverId) === String(receiverId)
+      );
+      const receiverToSender = messages.find(
+        m => String(m.senderId) === String(receiverId) && String(m.receiverId) === String(senderId)
+      );
+
+      const payload = {
+        senderToReceiver: {
+          senderId,
+          receiverId,
+          getCurrentAmount: senderToReceiver?.getCurrentAmount ?? 0,
+          amountHistory: senderToReceiver?.amountHistory ?? []
+        },
+        receiverToSender: {
+          senderId: receiverId,
+          receiverId: senderId,
+          getCurrentAmount: receiverToSender?.getCurrentAmount ?? 0,
+          amountHistory: receiverToSender?.amountHistory ?? []
+        }
+      };
+
+      io.to(senderId).emit('amount_history_result', payload);
+      io.to(receiverId).emit('amount_history_result', payload);
+
+    } catch (err) {
+      console.error('❌ get_amount_history error:', err.message);
+      socket.emit('amount_history_error', { error: 'Failed to get amount history' });
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔴 User disconnected: ${socket.id}`);
+  });
+});
+
+// ========== MESSAGE & CHAT ROUTES ==========
+
+app.post('/getMessages', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+
+  const formatTime = (date) =>
+    date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const formatDateLabel = (date) => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+    const msgDate = new Date(date);
+
+    if (msgDate.toDateString() === today.toDateString()) return 'Today';
+    if (msgDate.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return msgDate.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: msgDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+    });
+  };
+
+  try {
+    const messages = await mongoose
+      .model('Message')
+      .find({
+        $or: [
+          { senderId, receiverId },
+          { senderId: receiverId, receiverId: senderId }
+        ]
+      })
+      .sort({ createdAt: 1 });
+
+    const grouped = [];
+    let currentLabel = '';
+
+    messages.forEach((msg) => {
+      const label = formatDateLabel(msg.createdAt);
+      if (label !== currentLabel) {
+        grouped.push({ type: 'label', label });
+        currentLabel = label;
+      }
+      grouped.push({
+        type: 'message',
+        _id: msg._id,
+        senderId: msg.senderId,
+        receiverId: msg.receiverId,
+        text: msg.text,
+        attachments: msg.attachments || [],
+        status: msg.status,
+        isRead: msg.isRead,
+        activeStatus: msg.activeStatus || 'none',
+        negotiateAmount: msg.negotiateAmount || 0,
+        timestamp: msg.createdAt,
+        time: formatTime(msg.createdAt)
+      });
+    });
+
+    res.json(grouped);
+  } catch (err) {
+    console.error('❌ Failed to fetch messages:', err.message);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+app.post('/chatUsers', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const messages = await mongoose
+      .model('Message')
+      .find({
+        $or: [{ senderId: userId }, { receiverId: userId }]
+      })
+      .sort({ createdAt: -1 });
+
+    const unique = new Map();
+    messages.forEach((msg) => {
+      const participants = [msg.senderId, msg.receiverId].sort().join('_');
+      if (!unique.has(participants)) {
+        const chatWith = msg.senderId === userId ? msg.receiverId : msg.senderId;
+
+        const baseLastMessage =
+          msg.text ||
+          (msg.attachments?.length
+            ? msg.attachments[0].caption
+              ? `Attachment: ${msg.attachments[0].caption}`
+              : 'Attachment'
+            : '');
+
+        const lastMessage =
+          msg.activeStatus && msg.activeStatus !== 'none'
+            ? `${baseLastMessage || 'Status'} [${msg.activeStatus}]`
+            : baseLastMessage;
+
+        unique.set(participants, {
+          chatWith,
+          lastMessage,
+          status: msg.status,
+          time: msg.createdAt.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          timestamp: msg.createdAt,
+          unreadCount: 0
+        });
+      }
+    });
+
+    const unreadCounts = await mongoose
+      .model('Message')
+      .aggregate([
+        { $match: { receiverId: userId, isRead: false } },
+        { $group: { _id: '$senderId', count: { $sum: 1 } } }
+      ]);
+
+    const unreadMap = {};
+    unreadCounts.forEach((u) => (unreadMap[u._id] = u.count));
+
+    const chatList = Array.from(unique.values()).map((chat) => ({
+      ...chat,
+      unreadCount: unreadMap[chat.chatWith] || 0
+    }));
+
+    res.json(chatList);
+  } catch (err) {
+    console.error('❌ Failed to fetch chat users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat users' });
+  }
+});
+
+app.post('/unreadCounts', async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const unread = await mongoose
+      .model('Message')
+      .aggregate([
+        { $match: { receiverId: userId, isRead: false } },
+        { $group: { _id: '$senderId', count: { $sum: 1 } } }
+      ]);
+
+    const unreadMap = {};
+    unread.forEach((item) => (unreadMap[item._id] = item.count));
+    res.json(unreadMap);
+  } catch (err) {
+    console.error('❌ Error fetching unread counts:', err.message);
+    res.status(500).json({ error: 'Failed to fetch unread counts' });
+  }
+});
+
+// ========== CURRENT AMOUNT ROUTES ==========
+
+// ========== AMOUNT HISTORY ROUTES ==========
+
+// ✅ POST - Naya amount array me push karo
+app.post('/addAmountHistory', async (req, res) => {
+  const { senderId, receiverId, amount, addedBy } = req.body;
+  try {
+    if (!senderId || !receiverId) {
+      return res.status(400).json({ error: 'senderId and receiverId required' });
+    }
+    if (amount === undefined || isNaN(Number(amount))) {
+      return res.status(400).json({ error: 'Invalid amount' });
+    }
+
+    const newEntry = {
+      amount: Number(amount),
+      addedBy: addedBy || senderId,
+      addedAt: new Date()
+    };
+
+    const updated = await Message.findOneAndUpdate(
+      { senderId, receiverId },
+      {
+        $push: { amountHistory: newEntry },       // ✅ Array me push
+        $set: { getCurrentAmount: Number(amount) } // ✅ Current amount bhi update
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    const payload = {
+      senderId: updated.senderId,
+      receiverId: updated.receiverId,
+      getCurrentAmount: updated.getCurrentAmount,
+      amountHistory: updated.amountHistory,
+      latestEntry: newEntry,
+      timestamp: new Date().toISOString()
+    };
+
+    // ✅ Realtime dono ko bhejo
+    io.to(senderId).emit('amount_history_updated', payload);
+    io.to(receiverId).emit('amount_history_updated', payload);
+
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('❌ Error adding amount history:', err.message);
+    res.status(500).json({ error: 'Failed to add amount history' });
+  }
+});
+
+// ✅ GET - Saari amount history fetch karo
+app.get('/getAmountHistory', async (req, res) => {
+  const { senderId, receiverId } = req.query;
+  try {
+    if (!senderId || !receiverId) {
+      return res.status(400).json({ error: 'senderId and receiverId required' });
+    }
+
+    const messages = await Message.find({
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId }
+      ]
+    }).select('amountHistory getCurrentAmount senderId receiverId');
+
+    const senderToReceiver = messages.find(
+      m => String(m.senderId) === String(senderId) && String(m.receiverId) === String(receiverId)
+    );
+    const receiverToSender = messages.find(
+      m => String(m.senderId) === String(receiverId) && String(m.receiverId) === String(senderId)
+    );
+
+    res.json({
+      senderToReceiver: {
+        senderId,
+        receiverId,
+        getCurrentAmount: senderToReceiver?.getCurrentAmount ?? 0,
+        amountHistory: senderToReceiver?.amountHistory ?? []
+      },
+      receiverToSender: {
+        senderId: receiverId,
+        receiverId: senderId,
+        getCurrentAmount: receiverToSender?.getCurrentAmount ?? 0,
+        amountHistory: receiverToSender?.amountHistory ?? []
+      }
+    });
+  } catch (err) {
+    console.error('❌ Error fetching amount history:', err.message);
+    res.status(500).json({ error: 'Failed to fetch amount history' });
+  }
+});
+
+// ✅ DELETE - Poori history clear karo (optional)
+app.post('/clearAmountHistory', async (req, res) => {
+  const { senderId, receiverId } = req.body;
+  try {
+    const updated = await Message.findOneAndUpdate(
+      { senderId, receiverId },
+      { $set: { amountHistory: [], getCurrentAmount: 0 } },
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).json({ error: 'Record not found' });
+
+    const payload = {
+      senderId,
+      receiverId,
+      amountHistory: [],
+      getCurrentAmount: 0,
+      timestamp: new Date().toISOString()
+    };
+
+    io.to(senderId).emit('amount_history_cleared', payload);
+    io.to(receiverId).emit('amount_history_cleared', payload);
+
+    res.json({ success: true, ...payload });
+  } catch (err) {
+    console.error('❌ Error clearing amount history:', err.message);
+    res.status(500).json({ error: 'Failed to clear amount history' });
+  }
+});
+// ========== ADD THIS INSIDE io.on('connection', (socket) => { ... }) ==========
+// Place this AFTER the existing socket.on('mark_as_read', ...) block and BEFORE socket.on('disconnect', ...)
+
+// ✅ REALTIME DEAL ACCEPTANCE - broadcasts to BOTH sender and receiver
+
+
+// ========== START SERVER ==========
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+});

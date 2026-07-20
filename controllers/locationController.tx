@@ -1,0 +1,2470 @@
+import Location from "../models/locationModel.js";
+import Bid from "../models/BidSchema.js";
+import Status from "../models/Statusmodel.js";
+import {
+  sendNotificationToAllExcept,
+  sendNotificationToUsers,
+} from "../services/pushNotificationService.js";
+
+// const normalizeServiceRequestIds = (value) => {
+//   const ids = Array.isArray(value) ? value : value ? [value] : [];
+//   return [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))];
+// };
+// // ======================
+// // Create a new location
+// // ======================
+// // export const createLocation = async (req, res) => {
+// //   try {
+// //     const {
+// //       userId,
+// //       name,
+// //       image,
+// //       pickup,
+// //       drop,
+// //       jobDetails,
+// //       inventory,
+// //       serviceDetails,
+// //       moveType,
+// //       liftAvailable,
+// //       PickUpFloorNo,
+// //       DropFloorNo,
+// //       truckSize,
+// //       packingLayers,
+// //       storageDuration,
+// //       additionalServices,
+// //       jobName,
+// //       Servicerequestid,
+// //       bids
+// //     } = req.body;
+
+// //     const newLocation = new Location({
+// //       userId,
+// //       name: name || '',
+// //       image: image || '',
+// //       jobName: jobName || '',
+// //       pickup: {
+// //         location: pickup?.location || '',
+// //         city: pickup?.city || '',
+// //         state: pickup?.state || '',
+// //         addressLine1: pickup?.addressLine1 || '',
+// //         addressLine2: pickup?.addressLine2 || '',
+// //         pincode: pickup?.pincode || '',
+// //       },
+// //       drop: {
+// //         location: drop?.location || '',
+// //         city: drop?.city || '',
+// //         state: drop?.state || '',
+// //         addressLine1: drop?.addressLine1 || '',
+// //         addressLine2: drop?.addressLine2 || '',
+// //         pincode: drop?.pincode || '',
+// //       },
+// //       jobDetails: {
+// //         dateOfPacking: jobDetails?.dateOfPacking || null,
+// //         propertySize: jobDetails?.propertySize || '',
+// //         truckSize: truckSize || '',
+// //         status: "Posted",
+// //         progressStep: 0,
+// //       },
+// //       inventory: inventory?.map(item => ({
+// //         title: item.title || '',
+// //         subtitle: item.subtitle || '',
+// //         qty: Number(item.qty) || 0,
+// //       })) || [],
+// //       serviceDetails: {
+// //         packingRequired: serviceDetails?.packingRequired || 'No',
+// //         // ✅ insuranceRequired — stores "Yes" / "No" / "Estimated Value: 1,00,000"
+// //         insuranceRequired: serviceDetails?.insuranceRequired || 'No',
+// //         // ✅ estimatedValue separately bhi store hoga
+// //         estimatedValue: serviceDetails?.estimatedValue || '',
+// //         storageRequired: serviceDetails?.storageRequired || 'No',
+// //         dismantlingRequired: serviceDetails?.dismantlingRequired || 'No',
+// //         packingLayers: packingLayers || [],
+// //         storageDuration: storageDuration || '',
+// //         additionalServices: additionalServices || [],
+// //       },
+// //       moveType: moveType || '',
+// //       liftAvailable: liftAvailable || '',
+// //       PickUpFloorNo: PickUpFloorNo || '',
+// //       DropFloorNo: DropFloorNo || '',
+// //       bids: bids || [],
+      
+// //       Servicerequestid:Servicerequestid,
+// //       createdAt: new Date(),
+// //       updatedAt: new Date(),
+// //     });
+
+// //     const savedLocation = await newLocation.save();
+// //     res.status(201).json({
+// //       success: true,
+// //       message: "Location created successfully",
+// //       data: savedLocation
+// //     });
+// //   } catch (error) {
+// //     console.error("Error creating location:", error);
+// //     res.status(500).json({
+// //       success: false,
+// //       message: "Error creating location",
+// //       error: error.message
+// //     });
+// //   }
+// // };
+
+
+// export const createLocation = async (req, res) => {
+//   try {
+//     const {
+//       userId,
+//       name,
+//       image,
+//       pickup,
+//       drop,
+//       jobDetails,
+//       inventory,
+//       serviceDetails,
+//       moveType,
+//       liftAvailable,
+//       PickUpFloorNo,
+//       DropFloorNo,
+//       truckSize,
+//       packingLayers,
+//       storageDuration,
+//       additionalServices,
+//       jobName,
+//       Servicerequestid,
+//       bids,
+//       termsAccepted, 
+//     } = req.body;
+
+//     const rawServiceRequestIds =
+//       req.body.Servicerequestid ??
+//       req.body.Serivrequesid ??
+//       req.body.serviceRequestId ??
+//       req.body.serviceRequestIds;
+
+//     // ✅ Ensure Servicerequestid array
+//     const serviceRequestIds = normalizeServiceRequestIds(
+//       rawServiceRequestIds ?? Servicerequestid,
+//     );
+
+//     const newLocation = new Location({
+//       userId,
+//       name: name || "",
+//       image: image || "",
+//       jobName: jobName || "",
+
+//       pickup: {
+//         location: pickup?.location || "",
+//         city: pickup?.city || "",
+//         state: pickup?.state || "",
+//         addressLine1: pickup?.addressLine1 || "",
+//         addressLine2: pickup?.addressLine2 || "",
+//         pincode: pickup?.pincode || "",
+//       },
+
+//       drop: {
+//         location: drop?.location || "",
+//         city: drop?.city || "",
+//         state: drop?.state || "",
+//         addressLine1: drop?.addressLine1 || "",
+//         addressLine2: drop?.addressLine2 || "",
+//         pincode: drop?.pincode || "",
+//       },
+
+//       jobDetails: {
+//         dateOfPacking: jobDetails?.dateOfPacking || null,
+//         propertySize: jobDetails?.propertySize || "",
+//         truckSize: truckSize || "",
+//         status: "Job Posted",
+//         progressStep: 0,
+//       },
+
+//       inventory:
+//         inventory?.map((item) => ({
+//           title: item.title || "",
+//           subtitle: item.subtitle || "",
+//           qty: Number(item.qty) || 0,
+//         })) || [],
+
+//       serviceDetails: {
+//         packingRequired: serviceDetails?.packingRequired || "No",
+//         insuranceRequired: serviceDetails?.insuranceRequired || "No",
+//         estimatedValue: serviceDetails?.estimatedValue || "",
+//         storageRequired: serviceDetails?.storageRequired || "No",
+//         dismantlingRequired: serviceDetails?.dismantlingRequired || "No",
+//         packingLayers: packingLayers || [],
+//         storageDuration: storageDuration || "",
+//         additionalServices: additionalServices || [],
+//       },
+
+//       moveType: moveType || "",
+//       liftAvailable: liftAvailable || "",
+//       PickUpFloorNo: PickUpFloorNo || "",
+//       DropFloorNo: DropFloorNo || "",
+//       bids: bids || [],
+
+//       Servicerequestid: serviceRequestIds,
+
+//       // ✅ IMPORTANT LINE
+//       termsAccepted: termsAccepted === 1 ? 1 : 0,
+
+//       createdAt: new Date(),
+//       updatedAt: new Date(),
+//     });
+
+//     const savedLocation = await newLocation.save();
+
+//     // ✅ Initialize Status Tracker for this Job
+//     try {
+//       await Status.findOneAndUpdate(
+//         { JobId: savedLocation._id.toString() },
+//         { 
+//           status: "Job Posted",
+//           JobId: savedLocation._id.toString() 
+//         },
+//         { upsert: true, new: true }
+//       );
+//       console.log(`📡 Status initialized for Job: ${savedLocation._id}`);
+//     } catch (statusError) {
+//       console.error("⚠️ Failed to initialize status tracker:", statusError.message);
+//     }
+
+//     // Notify all users except job owner about newly posted job
+//     await sendNotificationToAllExcept({
+//       excludeUserIds: [String(userId)],
+//       title: "New Job Posted",
+//       body: `${name || "A user"} posted a new shifting job${jobName ? `: ${jobName}` : ""}`,
+//       senderId: String(userId || ""),
+//       eventType: "job_posted",
+//       data: {
+//         type: "job_posted",
+//         jobId: savedLocation._id.toString(),
+//         postedBy: String(userId || ""),
+//         jobName: String(jobName || ""),
+//       },
+//       payload: {
+//         job: savedLocation.toObject(),
+//         senderId: String(userId || ""),
+//       },
+//     });
+
+//     // Notify specific service request user IDs
+//     if (serviceRequestIds.length) {
+//       await sendNotificationToUsers({
+//         userIds: serviceRequestIds,
+//         senderId: String(userId || ""),
+//         eventType: "job_posted",
+//         title: "New Job Posted",
+//         body: `${name || "A user"} posted a new job${jobName ? `: ${jobName}` : ""}`,
+//         data: {
+//           type: "job_posted",
+//           jobId: savedLocation._id.toString(),
+//           postedBy: String(userId || ""),
+//           jobName: String(jobName || ""),
+//         },
+//         payload: {
+//           job: savedLocation.toObject(),
+//           senderId: String(userId || ""),
+//           receiverIds: serviceRequestIds,
+//         },
+//       });
+//     }
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Location created successfully",
+//       data: savedLocation,
+//     });
+//   } catch (error) {
+//     console.error("Error creating location:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error creating location",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
+// export const RejectJob = async (req, res) => {
+//   try {
+//     const { locationId, userId } = req.body;
+
+//     if (!locationId || !userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "locationId and userId are required",
+//       });
+//     }
+
+//     const updatedLocation = await Location.findByIdAndUpdate(
+//       locationId,
+//       {
+//         // ✅ add userId only if not already present
+//         $addToSet: { RejectJobsId: userId },
+//       },
+//       { new: true }
+//     );
+
+//     if (!updatedLocation) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found",
+//       });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Job rejected successfully",
+//       data: updatedLocation,
+//     });
+//   } catch (error) {
+//     console.error("Error rejecting job:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error rejecting job",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+// export const getRejectJobsId = async (req, res) => {
+//   try {
+//     const { rejectId } = req.body; // ✅ req.params → req.body
+
+//     if (!rejectId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Reject ID is required",
+//       });
+//     }
+
+//     const locations = await Location.find({
+//       RejectJobsId: { $in: [rejectId] },
+//     }).sort({ createdAt: -1 });
+
+//     if (!locations.length) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "No rejected jobs found for this ID",
+//       });
+//     }
+
+//     const updatedLocations = await Promise.all(
+//       locations.map(async (loc) => {
+//         const bidCount = await Bid.countDocuments({ jobId: loc._id });
+//         return {
+//           ...loc._doc,
+//           bidCount,
+//         };
+//       })
+//     );
+
+//     res.status(200).json({
+//       success: true,
+//       count: updatedLocations.length,
+//       data: updatedLocations,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching rejected jobs:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching rejected jobs",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+// // ======================
+// // Get all locations
+// // ======================
+// export const getAllCountsLocations = async (req, res) => {
+//   try {
+//     const locations = await Location.find();
+//     for (let loc of locations) {
+//       const bidCount = await Bid.countDocuments({ jobId: loc._id });
+//       loc._doc.bidCount = bidCount;
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       count: locations.length,
+//       data: locations
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+
+
+
+
+// // export const getLocations = async (req, res) => {
+// //   try {
+// //     let { page = 1, limit = 5 } = req.query;
+
+// //     page = parseInt(page);
+// //     limit = parseInt(limit);
+
+// //     if (page < 1) page = 1;
+// //     if (limit < 1) limit = 5;
+
+// //     const skip = (page - 1) * limit;
+
+// //     const locations = await Location.aggregate([
+// //       { $sort: { createdAt: -1 } },
+// //       { $skip: skip },
+// //       { $limit: limit },
+
+// //       {
+// //         $addFields: {
+// //           bidCount: { $size: "$bids" }, // ✅ FIX
+// //         },
+// //       },
+// //     ]);
+
+// //     const total = await Location.countDocuments(); // ✅ FIX
+
+// //     res.status(200).json({
+// //       success: true,
+// //       count: locations.length,
+// //       total,
+// //       page,
+// //       totalPages: Math.ceil(total / limit),
+// //       data: locations,
+// //     });
+// //   } catch (error) {
+// //     res.status(500).json({
+// //       success: false,
+// //       message: error.message,
+// //     });
+// //   }
+// // };
+
+
+
+
+// export const getLocations = async (req, res) => {
+//   try {
+//     let { page = 1, limit = 5 } = req.query;
+
+//     page = parseInt(page);
+//     limit = parseInt(limit);
+
+//     if (page < 1) page = 1;
+//     if (limit < 1) limit = 5;
+
+//     const skip = (page - 1) * limit;
+
+//     const locations = await Location.find()
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit);
+
+//     // 🔥 Parallel bid count
+//     const locationsWithBidCount = await Promise.all(
+//       locations.map(async (loc) => {
+//         const bidCount = await Bid.countDocuments({ jobId: loc._id });
+//         return {
+//           ...loc._doc,
+//           bidCount,
+//         };
+//       })
+//     );
+
+//     const total = await Location.countDocuments();
+
+//     res.status(200).json({
+//       success: true,
+//       count: locationsWithBidCount.length,
+//       total,
+//       page,
+//       totalPages: Math.ceil(total / limit),
+//       data: locationsWithBidCount,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
+// export const getLocationById = async (req, res) => {
+//   try {
+//     const location = await Location.findById(req.params.id);
+//     if (!location) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found"
+//       });
+//     }
+//     res.status(200).json({
+//       success: true,
+//       data: location
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching location",
+//       error: error.message
+//     });
+//   }
+// };
+
+// // ======================
+// // Get locations by user ID
+// // ======================
+// export const getLocationsByUserId = async (req, res) => {
+//   try {
+//     const locations = await Location.find({ userId: req.params.userId })
+//       .sort({ createdAt: -1 });
+
+//     if (!locations.length) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "No locations found for this user"
+//       });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       count: locations.length,
+//       data: locations
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching locations for user",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// // ======================
+// // Get locations by Servicerequestid
+// // ======================
+// // export const getLocationsByServiceRequestId = async (req, res) => {
+// //   try {
+// //     const locations = await Location.find({
+// //       Servicerequestid: req.params.servicerequestid
+// //     }).sort({ createdAt: -1 });
+
+// //     if (!locations.length) {
+// //       return res.status(404).json({
+// //         success: false,
+// //         message: "No locations found for this Service Request ID"
+// //       });
+// //     }
+
+// //     res.status(200).json({
+// //       success: true,
+// //       count: locations.length,
+// //       data: locations
+// //     });
+// //   } catch (error) {
+// //     res.status(500).json({
+// //       success: false,
+// //       message: "Error fetching locations by Service Request ID",
+// //       error: error.message
+// //     });
+// //   }
+// // };
+
+// // export const getLocationsByServiceRequestId = async (req, res) => {
+// //   try {
+// //     const { servicerequestid } = req.params;
+
+// //     if (!servicerequestid) {
+// //       return res.status(400).json({
+// //         success: false,
+// //         message: "Service Request ID is required",
+// //       });
+// //     }
+
+// //     const locations = await Location.find({
+// //       Servicerequestid: { $in: [servicerequestid] }, // ✅ array-safe match
+// //     }).sort({ createdAt: -1 });
+
+// //     if (!locations.length) {
+// //       return res.status(404).json({
+// //         success: false,
+// //         message: "No locations found for this Service Request ID",
+// //       });
+// //     }
+
+// //     res.status(200).json({
+// //       success: true,
+// //       count: locations.length,
+// //       data: locations,
+// //     });
+// //   } catch (error) {
+// //     console.error("Error fetching locations:", error);
+
+// //     res.status(500).json({
+// //       success: false,
+// //       message: "Error fetching locations by Service Request ID",
+// //       error: error.message,
+// //     });
+// //   }
+// // };
+
+// export const getLocationsByServiceRequestId = async (req, res) => {
+//   try {
+//     const { servicerequestid } = req.params;
+
+//     if (!servicerequestid) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Service Request ID is required",
+//       });
+//     }
+
+//     const locations = await Location.find({
+//       Servicerequestid: { $in: [servicerequestid] },
+//     }).sort({ createdAt: -1 });
+
+//     if (!locations.length) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "No locations found for this Service Request ID",
+//       });
+//     }
+
+//     for (let loc of locations) {
+//       const bidCount = await Bid.countDocuments({ jobId: loc._id });
+//       loc._doc.bidCount = bidCount;
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       count: locations.length,
+//       data: locations,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching locations:", error);
+
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching locations by Service Request ID",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// // export const getServicerequest = async (req,res)=>{
+// //      try {
+// //        const getServicesRequest = await Location.find({ Servicerequestid: req.params.Servicerequestid });
+      
+// //        if (!getServicesRequest.length) {
+// //           return res.status(404).json({
+// //             success:false,
+// //             message: "No Service found"
+// //           })
+// //        }
+
+// //         res.status(200).json({
+// //           success: true,
+// //           count: getServicesRequest.length,
+// //           data: getServicesRequest
+// //         })
+// //      } catch (error) {
+// //       console.log(error)
+// //      }
+// // } 
+
+
+// // ======================
+// // Update a location
+// // ======================
+// export const updateLocation = async (req, res) => {
+//   try {
+//     const existingLocation = await Location.findById(req.params.id).lean();
+//     if (!existingLocation) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found",
+//       });
+//     }
+
+//     const {
+//       pickup,
+//       drop,
+//       jobDetails,
+//       inventory,
+//       serviceDetails,
+//       moveType,
+//       liftAvailable,
+//       truckSize,
+//       packingLayers,
+//       storageDuration,
+//       additionalServices,
+//       bids,
+//       jobName,
+//       ...otherFields
+//     } = req.body;
+
+//     const updateData = {
+//       ...otherFields,
+//       updatedAt: new Date(),
+//     };
+
+//     if (pickup) {
+//       updateData.pickup = { ...pickup, pincode: pickup.pincode || "" };
+//     }
+
+//     if (drop) {
+//       updateData.drop = { ...drop, pincode: drop.pincode || "" };
+//     }
+
+//     if (jobDetails || truckSize) {
+//       updateData.jobDetails = {
+//         ...(jobDetails || {}),
+//         truckSize: truckSize || (jobDetails?.truckSize || ''),
+//       };
+//     }
+
+//     if (serviceDetails || packingLayers || storageDuration || additionalServices) {
+//       updateData.serviceDetails = {
+//         ...(serviceDetails || {}),
+//         // ✅ estimatedValue update support
+//         estimatedValue: serviceDetails?.estimatedValue || '',
+//         packingLayers: packingLayers || (serviceDetails?.packingLayers || []),
+//         storageDuration: storageDuration || (serviceDetails?.storageDuration || ''),
+//         additionalServices: additionalServices || (serviceDetails?.additionalServices || []),
+//       };
+//     }
+
+//     if (inventory) {
+//       updateData.inventory = inventory.map(item => ({
+//         title: item.title || '',
+//         subtitle: item.subtitle || '',
+//         qty: Number(item.qty) || 0,
+//       }));
+//     }
+
+//     if (moveType !== undefined) updateData.moveType = moveType;
+//     if (liftAvailable !== undefined) updateData.liftAvailable = liftAvailable;
+//     if (bids) updateData.bids = bids;
+
+//     const hasServiceRequestField =
+//       Object.prototype.hasOwnProperty.call(req.body, "Servicerequestid") ||
+//       Object.prototype.hasOwnProperty.call(req.body, "Serivrequesid") ||
+//       Object.prototype.hasOwnProperty.call(req.body, "serviceRequestId") ||
+//       Object.prototype.hasOwnProperty.call(req.body, "serviceRequestIds");
+
+//     const incomingServiceRequestIds = hasServiceRequestField
+//       ? normalizeServiceRequestIds(
+//           req.body.Servicerequestid ??
+//             req.body.Serivrequesid ??
+//             req.body.serviceRequestId ??
+//             req.body.serviceRequestIds,
+//         )
+//       : null;
+//     if (incomingServiceRequestIds !== null) {
+//       updateData.Servicerequestid = incomingServiceRequestIds;
+//     }
+
+//     const updatedLocation = await Location.findByIdAndUpdate(
+//       req.params.id,
+//       { $set: updateData },
+//       { new: true, runValidators: true }
+//     );
+
+//     if (incomingServiceRequestIds !== null) {
+//       const oldIds = normalizeServiceRequestIds(existingLocation.Servicerequestid);
+//       const newlyAddedIds = incomingServiceRequestIds.filter((id) => !oldIds.includes(id));
+
+//       if (newlyAddedIds.length) {
+//         await sendNotificationToUsers({
+//           userIds: newlyAddedIds,
+//           senderId: String(updatedLocation.userId || ""),
+//           eventType: "job_posted",
+//           title: "New Job Posted",
+//           body: `${updatedLocation.name || "A user"} posted a new job${updatedLocation.jobName ? `: ${updatedLocation.jobName}` : ""}`,
+//           data: {
+//             type: "job_posted",
+//             jobId: updatedLocation._id.toString(),
+//             postedBy: String(updatedLocation.userId || ""),
+//             jobName: String(updatedLocation.jobName || ""),
+//           },
+//           payload: {
+//             job: updatedLocation.toObject(),
+//             senderId: String(updatedLocation.userId || ""),
+//             receiverIds: newlyAddedIds,
+//           },
+//         });
+//       }
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Location updated successfully",
+//       data: updatedLocation
+//     });
+//   } catch (error) {
+//     console.error("Error updating location:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error updating location",
+//       error: error.message
+//     });
+//   }
+// };
+
+// // ======================
+// // Add single ServiceRequest ID with push
+// // ======================
+// export const addServiceRequestId = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const newServiceRequestId =
+//       req.body.Servicerequestid ??
+//       req.body.Serivrequesid ??
+//       req.body.serviceRequestId;
+
+//     const normalizedIds = normalizeServiceRequestIds(newServiceRequestId);
+//     const serviceRequestId = normalizedIds[0];
+
+//     if (!serviceRequestId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Service request id is required",
+//       });
+//     }
+
+//     const location = await Location.findById(id);
+//     if (!location) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found",
+//       });
+//     }
+
+//     const existingIds = normalizeServiceRequestIds(location.Servicerequestid);
+//     const isNew = !existingIds.includes(serviceRequestId);
+
+//     if (isNew) {
+//       existingIds.push(serviceRequestId);
+//       location.Servicerequestid = existingIds;
+//       location.updatedAt = new Date();
+//       await location.save();
+
+//       await sendNotificationToUsers({
+//         userIds: [serviceRequestId],
+//         senderId: String(location.userId || ""),
+//         eventType: "job_posted",
+//         title: "New Job Posted",
+//         body: `${location.name || "A user"} posted a new job${location.jobName ? `: ${location.jobName}` : ""}`,
+//         data: {
+//           type: "job_posted",
+//           jobId: location._id.toString(),
+//           postedBy: String(location.userId || ""),
+//           jobName: String(location.jobName || ""),
+//         },
+//         payload: {
+//           job: location.toObject(),
+//           senderId: String(location.userId || ""),
+//           receiverIds: [serviceRequestId],
+//         },
+//       });
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       message: isNew
+//         ? "Service request id added and push sent"
+//         : "Service request id already exists, push not sent",
+//       added: isNew,
+//       data: location,
+//     });
+//   } catch (error) {
+//     console.error("Error adding service request id:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Error adding service request id",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// // ======================
+// // Delete a location
+// // ======================
+// export const deleteLocation = async (req, res) => {
+//   try {
+//     const deletedLocation = await Location.findByIdAndDelete(req.params.id);
+//     if (!deletedLocation) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found"
+//       });
+//     }
+//     res.status(200).json({
+//       success: true,
+//       message: "Location deleted successfully"
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error deleting location",
+//       error: error.message
+//     });
+//   }
+// };
+
+// // ======================
+// // Submit/Add a Bid to a Location
+// // ======================
+// export const submitBid = async (req, res) => {
+//   try {
+//     const { item_id, bid } = req.body;
+
+//     const location = await Location.findById(item_id);
+//     if (!location) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found"
+//       });
+//     }
+
+//     if (!bid || !bid.quotation || !bid.bidderId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Bid must include at least quotation and bidderId",
+//       });
+//     }
+
+//     const newBid = {
+//       quotation: bid.quotation,
+//       status: bid.status || "Negotiable",
+//       validityOfQuote: bid.validityOfQuote || "7 Days",
+//       advancePayment: bid.advancePayment || 0,
+//       noteToCustomer: bid.noteToCustomer || "",
+//       bidderId: bid.bidderId,
+//       submittedAt: new Date(),
+//     };
+
+//     location.bids.push(newBid);
+
+//     if (location.jobDetails.status === "Posted" && location.bids.length === 1) {
+//       location.jobDetails.status = "Bid Received";
+//     }
+
+//     await location.save();
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Bid submitted successfully",
+//       data: location,
+//     });
+//   } catch (error) {
+//     console.error("Error submitting bid:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error submitting bid",
+//       error: error.message
+//     });
+//   }
+// };
+
+// // ======================
+// // Update Job Status
+// // ======================
+// // export const updateJobStatus = async (req, res) => {
+// //   try {
+// //     const { status, progressStep } = req.body;
+
+// //     const updateData = { updatedAt: new Date() };
+     
+// //     if (status) updateData["jobDetails.status"] = status;
+// //     if (progressStep !== undefined) updateData["jobDetails.progressStep"] = progressStep;
+
+// //     const updatedLocation = await Location.findByIdAndUpdate(
+// //       req.params.id,
+// //       { $set: updateData },
+// //       { new: true, runValidators: true }
+// //     );
+
+// //     if (!updatedLocation) {
+// //       return res.status(404).json({
+// //         success: false,
+// //         message: "Location not found"
+// //       });
+// //     }
+
+// //     res.status(200).json({
+// //       success: true,
+// //       message: "Job status updated successfully",
+// //       data: updatedLocation
+// //     });
+    
+// //   } catch (error) {
+// //     res.status(500).json({
+// //       success: false,
+// //       message: "Error updating job status",
+// //       error: error.message
+// //     });
+// //   }
+// // };
+
+
+// export const updateJobStatus = async (req, res) => {
+//   try {
+//     const { status, progressStep } = req.body;
+//     const jobId = req.params.id;
+
+//     const updateData = { updatedAt: new Date() };
+
+//     if (status) updateData["jobDetails.status"] = status;
+//     if (progressStep !== undefined)
+//       updateData["jobDetails.progressStep"] = progressStep;
+
+//     // ✅ 1. Update Location
+//     const updatedLocation = await Location.findByIdAndUpdate(
+//       jobId,
+//       { $set: updateData },
+//       { new: true, runValidators: true }
+//     );
+
+//     if (!updatedLocation) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found",
+//       });
+//     }
+
+//     // ✅ 2. Update Status (ONLY status field)
+//     if (status) {
+//       await Status.findOneAndUpdate(
+//         { JobId: jobId }, // ✅ correct query
+//         { status },       // ✅ only status pass karo
+//         { new: true, upsert: true, runValidators: true }
+//       );
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Job status updated successfully",
+//       data: updatedLocation,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error updating job status",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+// // ======================
+// // Search/Filters for Locations
+// // ======================
+// export const searchLocations = async (req, res) => {
+//   try {
+//     const { userId, city, state, status, minDate, maxDate, moveType } = req.query;
+
+//     const filter = {};
+
+//     if (userId) filter.userId = userId;
+//     if (city) filter["pickup.city"] = new RegExp(city, 'i');
+//     if (state) filter["pickup.state"] = new RegExp(state, 'i');
+//     if (status) filter["jobDetails.status"] = status;
+//     if (moveType) filter.moveType = moveType;
+
+//     if (minDate || maxDate) {
+//       filter["jobDetails.dateOfPacking"] = {};
+//       if (minDate) filter["jobDetails.dateOfPacking"].$gte = new Date(minDate);
+//       if (maxDate) filter["jobDetails.dateOfPacking"].$lte = new Date(maxDate);
+//     }
+
+//     const locations = await Location.find(filter).sort({ createdAt: -1 });
+
+//     res.status(200).json({
+//       success: true,
+//       count: locations.length,
+//       data: locations
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error searching locations",
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
+
+// // ======================
+// // Reschedule Job
+// // ======================
+// export const rescheduleJob = async (req, res) => {
+//   try {
+//     const { locationId, rescheduledate } = req.body;
+
+//     if (!locationId || !rescheduledate) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "locationId and rescheduledate are required",
+//       });
+//     }
+
+//     const parsedDate = new Date(rescheduledate);
+
+//     if (isNaN(parsedDate.getTime())) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid date format",
+//       });
+//     }
+
+//     const updatedLocation = await Location.findByIdAndUpdate(
+//       locationId,
+//       {
+//         $set: {
+//           rescheduledate: parsedDate,
+//           rescheduleStatus: "Pending", // 🔥 important
+//           updatedAt: new Date(),
+//         },
+//       },
+//       { new: true }
+//     );
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Reschedule request sent",
+//       data: updatedLocation,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
+
+// // ======================
+// // Get Reschedule Date
+// // ======================
+// // export const updateRescheduleStatus = async (req, res) => {
+// //   try {
+// //     const { locationId } = req.params;
+// //     const { status } = req.body;
+
+// //     if (!locationId || !status) {
+// //       return res.status(400).json({
+// //         success: false,
+// //         message: "locationId and status are required",
+// //       });
+// //     }
+
+// //     if (!["Accepted", "Rejected"].includes(status)) {
+// //       return res.status(400).json({
+// //         success: false,
+// //         message: "Status must be Accepted or Rejected",
+// //       });
+// //     }
+
+// //     const location = await Location.findById(locationId);
+// //     if (!location) {
+// //       return res.status(404).json({
+// //         success: false,
+// //         message: "Location not found",
+// //       });
+// //     }
+
+// //     if (!location.rescheduledate) {
+// //       return res.status(400).json({
+// //         success: false,
+// //         message: "No reschedule request found",
+// //       });
+// //     }
+
+// //     location.rescheduleStatus = status;
+// //     location.updatedAt = new Date();
+
+// //     await location.save();
+
+// //     res.status(200).json({
+// //       success: true,
+// //       message: `Reschedule ${status}`,
+// //       data: location,
+// //     });
+// //   } catch (error) {
+// //     console.error("Error:", error);
+// //     res.status(500).json({
+// //       success: false,
+// //       message: "Error updating reschedule status",
+// //       error: error.message,
+// //     });
+// //   }
+// // };
+
+
+
+// // export const requestReschedule = async (req, res) => {
+// //   try {
+// //     const { locationId, rescheduledate, rescheduleUserId, status } = req.body;
+
+// //     if (!locationId || !rescheduledate || !rescheduleUserId) {
+// //       return res.status(400).json({
+// //         success: false,
+// //         message: "locationId and rescheduledate are required",
+// //       });
+// //     }
+
+// //     // ✅ Safe date parse
+// //     let parsedDate;
+// //     if (/^\d{4}-\d{2}-\d{2}$/.test(rescheduledate)) {
+// //       parsedDate = new Date(rescheduledate + "T00:00:00.000Z");
+// //     } else {
+// //       parsedDate = new Date(rescheduledate);
+// //     }
+
+// //     if (isNaN(parsedDate.getTime())) {
+// //       return res.status(400).json({
+// //         success: false,
+// //         message: "Invalid date format",
+// //       });
+// //     }
+
+// //     const location = await Location.findById(locationId);
+
+// //     if (!location) {
+// //       return res.status(404).json({
+// //         success: false,
+// //         message: "Location not found",
+// //       });
+// //     }
+
+// //     // ✅ Allowed status control
+// //     const allowedStatus = ["Pending", "Reschedule"];
+
+// //     let finalStatus;
+
+// //     if (status && allowedStatus.includes(status)) {
+// //       finalStatus = status;
+// //     } else {
+// //       // Default logic
+// //       finalStatus = location.rescheduledate ? "Reschedule" : "Pending";
+// //     }
+
+// //     location.rescheduledate = parsedDate;
+// //     location.rescheduleStatus = finalStatus;
+
+// //     await location.save();
+
+// //     res.status(200).json({
+// //       success: true,
+// //       message: "Reschedule request processed",
+// //       data: location,
+// //     });
+
+// //   } catch (error) {
+// //     res.status(500).json({
+// //       success: false,
+// //       message: "Error requesting reschedule",
+// //       error: error.message,
+// //     });
+// //   }
+// // };
+
+
+// export const requestReschedule = async (req, res) => {
+//   try {
+//     const { locationId, rescheduledate, rescheduleUserId, status } = req.body;
+
+//     if (!locationId || !rescheduledate || !rescheduleUserId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "locationId, rescheduledate and rescheduleUserId are required",
+//       });
+//     }
+
+//     // ✅ Safe date parse
+//     let parsedDate;
+//     if (/^\d{4}-\d{2}-\d{2}$/.test(rescheduledate)) {
+//       parsedDate = new Date(rescheduledate + "T00:00:00.000Z");
+//     } else {
+//       parsedDate = new Date(rescheduledate);
+//     }
+
+//     if (isNaN(parsedDate.getTime())) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid date format",
+//       });
+//     }
+
+//     const location = await Location.findById(locationId);
+
+//     if (!location) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found",
+//       });
+//     }
+
+//     // ✅ Allowed status control
+//     const allowedStatus = ["Pending", "Reschedule"];
+//     let finalStatus;
+
+//     if (status && allowedStatus.includes(status)) {
+//       finalStatus = status;
+//     } else {
+//       finalStatus = location.rescheduledate ? "Reschedule" : "Pending";
+//     }
+
+//     // ✅ 🔥 MAIN CHANGE: Save userId also
+//     location.rescheduledate = parsedDate;
+//     location.rescheduleStatus = finalStatus;
+//     location.rescheduleUserId = rescheduleUserId; // 👈 added
+
+//     await location.save();
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Reschedule request processed",
+//       data: location,
+//     });
+
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error requesting reschedule",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// export const updateRescheduleStatus = async (req, res) => {
+//   try {
+//     const { locationId } = req.params;
+//     const { status, scheduleDate } = req.body;
+
+//     if (!locationId || !status) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "locationId and status are required",
+//       });
+//     }
+
+//     const validStatuses = ["Accepted", "Rejected"];
+
+//     if (!validStatuses.includes(status)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Status must be Accepted or Rejected",
+//       });
+//     }
+
+//     const location = await Location.findById(locationId);
+
+//     if (!location) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Location not found",
+//       });
+//     }
+
+//     if (!location.rescheduledate) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "No reschedule request found",
+//       });
+//     }
+
+//     // ✅ If accepted → scheduleDate required
+//     if (status === "Accepted" && !scheduleDate) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "scheduleDate is required when accepting",
+//       });
+//     }
+
+//     location.rescheduleStatus = status;
+
+//     if (status === "Accepted") {
+//       location.scheduleDate = new Date(scheduleDate); // ✅ final date
+//     }
+
+//     if (status === "Rejected") {
+//       location.scheduleDate = null;
+//     }
+
+//     location.updatedAt = new Date();
+
+//     await location.save();
+
+//     res.status(200).json({
+//       success: true,
+//       message: `Reschedule ${status}`,
+//       data: location,
+//     });
+
+//   } catch (error) {
+//     console.error("ERROR:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error updating reschedule status",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// // export const getRescheduleDetails = async (req, res) => {
+// //   try {
+// //     const { locationId } = req.params;
+
+// //     if (!locationId) {
+// //       return res.status(400).json({
+// //         success: false,
+// //         message: "locationId is required",
+// //       });
+// //     }
+
+// //     const location = await Location.findById(locationId)
+// //       .select("rescheduledate scheduleDate rescheduleStatus");
+
+// //     if (!location) {
+// //       return res.status(404).json({
+// //         success: false,
+// //         message: "Location not found",
+// //       });
+// //     }
+
+// //     res.status(200).json({
+// //       success: true,
+// //       data: {
+// //         requestedDate: location.rescheduledate,
+// //         finalDate: location.scheduleDate,
+// //         status: location.rescheduleStatus || "Pending",
+// //       },
+// //     });
+
+// //   } catch (error) {
+// //     console.error("Error fetching reschedule details:", error);
+// //     res.status(500).json({
+// //       success: false,
+// //       message: "Error fetching reschedule details",
+// //       error: error.message,
+// //     });
+// //   }
+// // };
+
+
+// // export const getRescheduleDetails = async (req, res) => {
+// //   try {
+// //     const { locationId, rescheduleUserId } = req.body; // 👈 body se le rahe hai
+
+// //     if (!locationId || !rescheduleUserId) {
+// //       return res.status(400).json({
+// //         success: false,
+// //         message: "locationId and rescheduleUserId are required",
+// //       });
+// //     }
+
+// //     const location = await Location.findOne({
+// //       _id: locationId,
+// //       rescheduleUserId: rescheduleUserId,
+// //     }).select("rescheduledate scheduleDate rescheduleStatus rescheduleUserId");
+
+// //     if (!location) {
+// //       return res.status(404).json({
+// //         success: false,
+// //         message: "No reschedule data found for this user and job",
+// //       });
+// //     }
+
+// //     res.status(200).json({
+// //       success: true,
+// //       data: {
+// //         requestedDate: location.rescheduledate,
+// //         finalDate: location.scheduleDate,
+// //         status: location.rescheduleStatus || "Pending",
+// //         rescheduleUserId: location.rescheduleUserId,
+// //       },
+// //     });
+
+// //   } catch (error) {
+// //     console.error("Error fetching reschedule details:", error);
+// //     res.status(500).json({
+// //       success: false,
+// //       message: "Error fetching reschedule details",
+// //       error: error.message,
+// //     });
+// //   }
+// // };
+
+// export const getRescheduleDetails = async (req, res) => {
+//   try {
+//     const { locationId, rescheduleUserId } = req.query; // ✅ body → query
+
+//     if (!locationId || !rescheduleUserId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "locationId and rescheduleUserId are required",
+//       });
+//     }
+    
+//     const location = await Location.findOne({
+//       _id: locationId,
+//       rescheduleUserId: rescheduleUserId,
+//     }).select("rescheduledate scheduleDate rescheduleStatus rescheduleUserId");
+
+//     if (!location) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "No reschedule data found for this user and job",
+//       });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       data: {
+//         requestedDate: location.rescheduledate,
+//         finalDate: location.scheduleDate,
+//         status: location.rescheduleStatus || "Pending",
+//         rescheduleUserId: location.rescheduleUserId,
+//       },
+//     });
+
+//   } catch (error) {
+//     console.error("Error fetching reschedule details:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching reschedule details",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ============================================================
+// HELPER — normalise Servicerequestid to a flat string array
+// ============================================================
+const normalizeServiceRequestIds = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === "string") return value ? [value] : [];
+  return [String(value)];
+};
+
+// ============================================================
+// CREATE LOCATION
+// ============================================================
+export const createLocation = async (req, res) => {
+  try {
+    const {
+      userId,
+      name,
+      image,
+      pickup,
+      drop,
+      jobDetails,
+      inventory,
+      serviceDetails,
+      moveType,
+      liftAvailable,
+      PickUpFloorNo,
+      DropFloorNo,
+      truckSize,
+      packingLayers,
+      storageDuration,
+      additionalServices,
+      jobName,
+      Servicerequestid,
+      bids,
+      termsAccepted,
+      publishType,
+    } = req.body;
+
+    const rawServiceRequestIds =
+      req.body.Servicerequestid ??
+      req.body.Serivrequesid ??
+      req.body.serviceRequestId ??
+      req.body.serviceRequestIds;
+
+    const serviceRequestIds = normalizeServiceRequestIds(
+      rawServiceRequestIds ?? Servicerequestid
+    );
+
+    const newLocation = new Location({
+      userId,
+      name: name || "",
+      image: image || "",
+      jobName: jobName || "",
+      publishType: publishType || "marketplace",
+
+      pickup: {
+        location: pickup?.location || "",
+        city: pickup?.city || "",
+        state: pickup?.state || "",
+        addressLine1: pickup?.addressLine1 || "",
+        addressLine2: pickup?.addressLine2 || "",
+        pincode: pickup?.pincode || "",
+      },
+
+      drop: {
+        location: drop?.location || "",
+        city: drop?.city || "",
+        state: drop?.state || "",
+        addressLine1: drop?.addressLine1 || "",
+        addressLine2: drop?.addressLine2 || "",
+        pincode: drop?.pincode || "",
+      },
+
+      jobDetails: {
+        // ── Core ──────────────────────────────────────────
+        dateOfPacking: jobDetails?.dateOfPacking || null,
+        propertySize: jobDetails?.propertySize || "",
+        truckSize: truckSize || jobDetails?.truckSize || "",
+        status: "Job Posted",
+        progressStep: 0,
+
+        // ── Transport ──────────────────────────────────────
+        transportDescription: jobDetails?.transportDescription || "",
+        distance: jobDetails?.distance || "",
+        goodsType: jobDetails?.goodsType || "",
+
+        // ── Storage ────────────────────────────────────────
+        warehouseLocationRequired: jobDetails?.warehouseLocationRequired || "",
+        storageDuration: jobDetails?.storageDuration || storageDuration || "",
+        storageNotes: jobDetails?.storageNotes || "",
+        handoverDate: jobDetails?.handoverDate || null,
+        vacateDate: jobDetails?.vacateDate || null,
+
+        // ── Packing ────────────────────────────────────────
+        packingRequired: jobDetails?.packingRequired || "No",
+        packingDays: Number(jobDetails?.packingDays) || 0,
+        selectedPackingLayers: jobDetails?.selectedPackingLayers || [],
+        selectedPackingPackages: jobDetails?.selectedPackingPackages || [],
+        selectedReturnable: jobDetails?.selectedReturnable || "",
+
+        // ── Labour / Box ───────────────────────────────────
+        boxCount: Number(jobDetails?.boxCount) || 0,
+        labourCount: Number(jobDetails?.labourCount) || 0,
+
+        // ── Custom / Misc ──────────────────────────────────
+        customServiceDescription: jobDetails?.customServiceDescription || "",
+        additionalCustomNotes: jobDetails?.additionalCustomNotes || "",
+        preferredContactTime: jobDetails?.preferredContactTime || "",
+      },
+
+      inventory:
+        inventory?.map((item) => ({
+          title: item.title || "",
+          subtitle: item.subtitle || "",
+          qty: Number(item.qty) || 0,
+        })) || [],
+
+      serviceDetails: {
+        packingRequired: serviceDetails?.packingRequired || "No",
+        insuranceRequired: serviceDetails?.insuranceRequired || "No",
+        estimatedValue: serviceDetails?.estimatedValue || "",
+        storageRequired: serviceDetails?.storageRequired || "No",
+        dismantlingRequired: serviceDetails?.dismantlingRequired || "No",
+        packingLayers: packingLayers || [],
+        storageDuration: storageDuration || "",
+        additionalServices: additionalServices || [],
+      },
+
+      moveType: moveType || "",
+      liftAvailable: liftAvailable || "",
+      PickUpFloorNo: PickUpFloorNo || "",
+      DropFloorNo: DropFloorNo || "",
+      bids: bids || [],
+
+      Servicerequestid: serviceRequestIds,
+      termsAccepted: termsAccepted === 1 ? 1 : 0,
+
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const savedLocation = await newLocation.save();
+
+    // Initialise Status tracker
+    try {
+      await Status.findOneAndUpdate(
+        { JobId: savedLocation._id.toString() },
+        { status: "Job Posted", JobId: savedLocation._id.toString() },
+        { upsert: true, new: true }
+      );
+      console.log(`📡 Status initialized for Job: ${savedLocation._id}`);
+    } catch (statusError) {
+      console.error("⚠️ Failed to initialize status tracker:", statusError.message);
+    }
+
+    // Notify all users except job owner
+    await sendNotificationToAllExcept({
+      excludeUserIds: [String(userId)],
+      title: "New Job Posted",
+      body: `${name || "A user"} posted a new shifting job${jobName ? `: ${jobName}` : ""}`,
+      senderId: String(userId || ""),
+      eventType: "job_posted",
+      data: {
+        type: "job_posted",
+        jobId: savedLocation._id.toString(),
+        postedBy: String(userId || ""),
+        jobName: String(jobName || ""),
+      },
+      payload: {
+        job: savedLocation.toObject(),
+        senderId: String(userId || ""),
+      },
+    });
+
+    // Notify specific service-request user IDs
+    if (serviceRequestIds.length) {
+      await sendNotificationToUsers({
+        userIds: serviceRequestIds,
+        senderId: String(userId || ""),
+        eventType: "job_posted",
+        title: "New Job Posted",
+        body: `${name || "A user"} posted a new job${jobName ? `: ${jobName}` : ""}`,
+        data: {
+          type: "job_posted",
+          jobId: savedLocation._id.toString(),
+          postedBy: String(userId || ""),
+          jobName: String(jobName || ""),
+        },
+        payload: {
+          job: savedLocation.toObject(),
+          senderId: String(userId || ""),
+          receiverIds: serviceRequestIds,
+        },
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Location created successfully",
+      data: savedLocation,
+    });
+  } catch (error) {
+    console.error("Error creating location:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating location",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================================
+// REJECT JOB
+// ============================================================
+export const RejectJob = async (req, res) => {
+  try {
+    const { locationId, userId } = req.body;
+
+    if (!locationId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "locationId and userId are required",
+      });
+    }
+
+    const updatedLocation = await Location.findByIdAndUpdate(
+      locationId,
+      { $addToSet: { RejectJobsId: userId } },
+      { new: true }
+    );
+
+    if (!updatedLocation) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+
+    res.status(200).json({ success: true, message: "Job rejected successfully", data: updatedLocation });
+  } catch (error) {
+    console.error("Error rejecting job:", error);
+    res.status(500).json({ success: false, message: "Error rejecting job", error: error.message });
+  }
+};
+
+// ============================================================
+// GET REJECTED JOBS BY ID
+// ============================================================
+export const getRejectJobsId = async (req, res) => {
+  try {
+    const { rejectId } = req.body;
+
+    if (!rejectId) {
+      return res.status(400).json({ success: false, message: "Reject ID is required" });
+    }
+
+    const locations = await Location.find({
+      RejectJobsId: { $in: [rejectId] },
+    }).sort({ createdAt: -1 });
+
+    if (!locations.length) {
+      return res.status(404).json({ success: false, message: "No rejected jobs found for this ID" });
+    }
+
+    const updatedLocations = await Promise.all(
+      locations.map(async (loc) => {
+        const bidCount = await Bid.countDocuments({ jobId: loc._id });
+        return { ...loc._doc, bidCount };
+      })
+    );
+
+    res.status(200).json({ success: true, count: updatedLocations.length, data: updatedLocations });
+  } catch (error) {
+    console.error("Error fetching rejected jobs:", error);
+    res.status(500).json({ success: false, message: "Error fetching rejected jobs", error: error.message });
+  }
+};
+
+// ============================================================
+// GET ALL LOCATIONS WITH BID COUNTS
+// ============================================================
+export const getAllCountsLocations = async (req, res) => {
+  try {
+    const locations = await Location.find();
+    for (let loc of locations) {
+      const bidCount = await Bid.countDocuments({ jobId: loc._id });
+      loc._doc.bidCount = bidCount;
+    }
+    res.status(200).json({ success: true, count: locations.length, data: locations });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ============================================================
+// GET LOCATIONS (PAGINATED)
+// ============================================================
+export const getLocations = async (req, res) => {
+  try {
+    let { page = 1, limit = 5 } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+    if (page < 1) page = 1;
+    if (limit < 1) limit = 5;
+
+    const skip = (page - 1) * limit;
+
+    const locations = await Location.find()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const locationsWithBidCount = await Promise.all(
+      locations.map(async (loc) => {
+        const bidCount = await Bid.countDocuments({ jobId: loc._id });
+        return { ...loc._doc, bidCount };
+      })
+    );
+
+    const total = await Location.countDocuments();
+
+    res.status(200).json({
+      success: true,
+      count: locationsWithBidCount.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+      data: locationsWithBidCount,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// GET LOCATION BY ID
+// ============================================================
+export const getLocationById = async (req, res) => {
+  try {
+    const location = await Location.findById(req.params.id);
+    if (!location) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+    res.status(200).json({ success: true, data: location });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching location", error: error.message });
+  }
+};
+
+// ============================================================
+// GET LOCATIONS BY USER ID
+// ============================================================
+export const getLocationsByUserId = async (req, res) => {
+  try {
+    const locations = await Location.find({ userId: req.params.userId }).sort({ createdAt: -1 });
+
+    if (!locations.length) {
+      return res.status(404).json({ success: false, message: "No locations found for this user" });
+    }
+
+    res.status(200).json({ success: true, count: locations.length, data: locations });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching locations for user", error: error.message });
+  }
+};
+
+// ============================================================
+// GET LOCATIONS BY SERVICE REQUEST ID
+// ============================================================
+export const getLocationsByServiceRequestId = async (req, res) => {
+  try {
+    const { servicerequestid } = req.params;
+
+    if (!servicerequestid) {
+      return res.status(400).json({ success: false, message: "Service Request ID is required" });
+    }
+
+    const locations = await Location.find({
+      Servicerequestid: { $in: [servicerequestid] },
+    }).sort({ createdAt: -1 });
+
+    if (!locations.length) {
+      return res.status(404).json({ success: false, message: "No locations found for this Service Request ID" });
+    }
+
+    for (let loc of locations) {
+      const bidCount = await Bid.countDocuments({ jobId: loc._id });
+      loc._doc.bidCount = bidCount;
+    }
+
+    res.status(200).json({ success: true, count: locations.length, data: locations });
+  } catch (error) {
+    console.error("Error fetching locations:", error);
+    res.status(500).json({ success: false, message: "Error fetching locations by Service Request ID", error: error.message });
+  }
+};
+
+// ============================================================
+// UPDATE LOCATION
+// ============================================================
+export const updateLocation = async (req, res) => {
+  try {
+    const existingLocation = await Location.findById(req.params.id).lean();
+    if (!existingLocation) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+
+    const {
+      pickup,
+      drop,
+      jobDetails,
+      inventory,
+      serviceDetails,
+      moveType,
+      liftAvailable,
+      truckSize,
+      packingLayers,
+      storageDuration,
+      additionalServices,
+      bids,
+      jobName,
+      publishType,
+      ...otherFields
+    } = req.body;
+
+    const updateData = { ...otherFields, updatedAt: new Date() };
+
+    if (pickup) {
+      updateData.pickup = { ...pickup, pincode: pickup.pincode || "" };
+    }
+
+    if (drop) {
+      updateData.drop = { ...drop, pincode: drop.pincode || "" };
+    }
+
+    if (jobDetails || truckSize) {
+      const existing = existingLocation.jobDetails || {};
+      updateData.jobDetails = {
+        // preserve fields not in the patch
+        ...existing,
+        // apply patch fields (only those present in req.body.jobDetails)
+        ...(jobDetails || {}),
+        // top-level truckSize shorthand wins over nested
+        truckSize: truckSize || jobDetails?.truckSize || existing.truckSize || "",
+        // numeric coercion for count fields
+        packingDays: Number(jobDetails?.packingDays ?? existing.packingDays) || 0,
+        boxCount: Number(jobDetails?.boxCount ?? existing.boxCount) || 0,
+        labourCount: Number(jobDetails?.labourCount ?? existing.labourCount) || 0,
+      };
+    }
+
+    if (serviceDetails || packingLayers || storageDuration || additionalServices) {
+      updateData.serviceDetails = {
+        ...(serviceDetails || {}),
+        estimatedValue: serviceDetails?.estimatedValue || "",
+        packingLayers: packingLayers || serviceDetails?.packingLayers || [],
+        storageDuration: storageDuration || serviceDetails?.storageDuration || "",
+        additionalServices: additionalServices || serviceDetails?.additionalServices || [],
+      };
+    }
+
+    if (inventory) {
+      updateData.inventory = inventory.map((item) => ({
+        title: item.title || "",
+        subtitle: item.subtitle || "",
+        qty: Number(item.qty) || 0,
+      }));
+    }
+
+    if (moveType !== undefined) updateData.moveType = moveType;
+    if (liftAvailable !== undefined) updateData.liftAvailable = liftAvailable;
+    if (bids) updateData.bids = bids;
+    if (publishType) updateData.publishType = publishType;
+
+    const hasServiceRequestField =
+      Object.prototype.hasOwnProperty.call(req.body, "Servicerequestid") ||
+      Object.prototype.hasOwnProperty.call(req.body, "Serivrequesid") ||
+      Object.prototype.hasOwnProperty.call(req.body, "serviceRequestId") ||
+      Object.prototype.hasOwnProperty.call(req.body, "serviceRequestIds");
+
+    const incomingServiceRequestIds = hasServiceRequestField
+      ? normalizeServiceRequestIds(
+        req.body.Servicerequestid ??
+        req.body.Serivrequesid ??
+        req.body.serviceRequestId ??
+        req.body.serviceRequestIds
+      )
+      : null;
+
+    if (incomingServiceRequestIds !== null) {
+      updateData.Servicerequestid = incomingServiceRequestIds;
+    }
+
+    const updatedLocation = await Location.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (incomingServiceRequestIds !== null) {
+      const oldIds = normalizeServiceRequestIds(existingLocation.Servicerequestid);
+      const newlyAddedIds = incomingServiceRequestIds.filter((id) => !oldIds.includes(id));
+
+      if (newlyAddedIds.length) {
+        await sendNotificationToUsers({
+          userIds: newlyAddedIds,
+          senderId: String(updatedLocation.userId || ""),
+          eventType: "job_posted",
+          title: "New Job Posted",
+          body: `${updatedLocation.name || "A user"} posted a new job${updatedLocation.jobName ? `: ${updatedLocation.jobName}` : ""}`,
+          data: {
+            type: "job_posted",
+            jobId: updatedLocation._id.toString(),
+            postedBy: String(updatedLocation.userId || ""),
+            jobName: String(updatedLocation.jobName || ""),
+          },
+          payload: {
+            job: updatedLocation.toObject(),
+            senderId: String(updatedLocation.userId || ""),
+            receiverIds: newlyAddedIds,
+          },
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, message: "Location updated successfully", data: updatedLocation });
+  } catch (error) {
+    console.error("Error updating location:", error);
+    res.status(500).json({ success: false, message: "Error updating location", error: error.message });
+  }
+};
+
+// ============================================================
+// ADD SINGLE SERVICE REQUEST ID
+// ============================================================
+export const addServiceRequestId = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const newServiceRequestId =
+      req.body.Servicerequestid ?? req.body.Serivrequesid ?? req.body.serviceRequestId;
+
+    const normalizedIds = normalizeServiceRequestIds(newServiceRequestId);
+    const serviceRequestId = normalizedIds[0];
+
+    if (!serviceRequestId) {
+      return res.status(400).json({ success: false, message: "Service request id is required" });
+    }
+
+    const location = await Location.findById(id);
+    if (!location) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+
+    const existingIds = normalizeServiceRequestIds(location.Servicerequestid);
+    const isNew = !existingIds.includes(serviceRequestId);
+
+    if (isNew) {
+      existingIds.push(serviceRequestId);
+      location.Servicerequestid = existingIds;
+      location.updatedAt = new Date();
+      await location.save();
+
+      await sendNotificationToUsers({
+        userIds: [serviceRequestId],
+        senderId: String(location.userId || ""),
+        eventType: "job_posted",
+        title: "New Job Posted",
+        body: `${location.name || "A user"} posted a new job${location.jobName ? `: ${location.jobName}` : ""}`,
+        data: {
+          type: "job_posted",
+          jobId: location._id.toString(),
+          postedBy: String(location.userId || ""),
+          jobName: String(location.jobName || ""),
+        },
+        payload: {
+          job: location.toObject(),
+          senderId: String(location.userId || ""),
+          receiverIds: [serviceRequestId],
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: isNew
+        ? "Service request id added and push sent"
+        : "Service request id already exists, push not sent",
+      added: isNew,
+      data: location,
+    });
+  } catch (error) {
+    console.error("Error adding service request id:", error);
+    return res.status(500).json({ success: false, message: "Error adding service request id", error: error.message });
+  }
+};
+
+// ============================================================
+// DELETE LOCATION
+// ============================================================
+export const deleteLocation = async (req, res) => {
+  try {
+    const deletedLocation = await Location.findByIdAndDelete(req.params.id);
+    if (!deletedLocation) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+    res.status(200).json({ success: true, message: "Location deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error deleting location", error: error.message });
+  }
+};
+
+// ============================================================
+// SUBMIT BID
+// ============================================================
+export const submitBid = async (req, res) => {
+  try {
+    const { item_id, bid } = req.body;
+
+    const location = await Location.findById(item_id);
+    if (!location) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+
+    if (!bid || !bid.quotation || !bid.bidderId) {
+      return res.status(400).json({ success: false, message: "Bid must include at least quotation and bidderId" });
+    }
+
+    const newBid = {
+      quotation: bid.quotation,
+      status: bid.status || "Negotiable",
+      validityOfQuote: bid.validityOfQuote || "7 Days",
+      advancePayment: bid.advancePayment || 0,
+      noteToCustomer: bid.noteToCustomer || "",
+      bidderId: bid.bidderId,
+      submittedAt: new Date(),
+    };
+
+    location.bids.push(newBid);
+
+    if (location.jobDetails.status === "Posted" && location.bids.length === 1) {
+      location.jobDetails.status = "Bid Received";
+    }
+
+    await location.save();
+
+    res.status(200).json({ success: true, message: "Bid submitted successfully", data: location });
+  } catch (error) {
+    console.error("Error submitting bid:", error);
+    res.status(500).json({ success: false, message: "Error submitting bid", error: error.message });
+  }
+};
+
+// ============================================================
+// UPDATE JOB STATUS
+// ============================================================
+export const updateJobStatus = async (req, res) => {
+  try {
+    const { status, progressStep } = req.body;
+    const jobId = req.params.id;
+
+    const updateData = { updatedAt: new Date() };
+    if (status) updateData["jobDetails.status"] = status;
+    if (progressStep !== undefined) updateData["jobDetails.progressStep"] = progressStep;
+
+    const updatedLocation = await Location.findByIdAndUpdate(
+      jobId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedLocation) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+
+    if (status) {
+      await Status.findOneAndUpdate(
+        { JobId: jobId },
+        { status },
+        { new: true, upsert: true, runValidators: true }
+      );
+    }
+
+    res.status(200).json({ success: true, message: "Job status updated successfully", data: updatedLocation });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error updating job status", error: error.message });
+  }
+};
+
+// ============================================================
+// SEARCH / FILTER LOCATIONS
+// ============================================================
+export const searchLocations = async (req, res) => {
+  try {
+    const { userId, city, state, status, minDate, maxDate, moveType } = req.query;
+    const filter = {};
+
+    if (userId) filter.userId = userId;
+    if (city) filter["pickup.city"] = new RegExp(city, "i");
+    if (state) filter["pickup.state"] = new RegExp(state, "i");
+    if (status) filter["jobDetails.status"] = status;
+    if (moveType) filter.moveType = moveType;
+
+    if (minDate || maxDate) {
+      filter["jobDetails.dateOfPacking"] = {};
+      if (minDate) filter["jobDetails.dateOfPacking"].$gte = new Date(minDate);
+      if (maxDate) filter["jobDetails.dateOfPacking"].$lte = new Date(maxDate);
+    }
+
+    const locations = await Location.find(filter).sort({ createdAt: -1 });
+    res.status(200).json({ success: true, count: locations.length, data: locations });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error searching locations", error: error.message });
+  }
+};
+
+// ============================================================
+// RESCHEDULE JOB
+// ============================================================
+export const rescheduleJob = async (req, res) => {
+  try {
+    const { locationId, rescheduledate } = req.body;
+
+    if (!locationId || !rescheduledate) {
+      return res.status(400).json({ success: false, message: "locationId and rescheduledate are required" });
+    }
+
+    const parsedDate = new Date(rescheduledate);
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid date format" });
+    }
+
+    const updatedLocation = await Location.findByIdAndUpdate(
+      locationId,
+      { $set: { rescheduledate: parsedDate, rescheduleStatus: "Pending", updatedAt: new Date() } },
+      { new: true }
+    );
+
+    res.status(200).json({ success: true, message: "Reschedule request sent", data: updatedLocation });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ============================================================
+// REQUEST RESCHEDULE (with userId)
+// ============================================================
+export const requestReschedule = async (req, res) => {
+  try {
+    const { locationId, rescheduledate, rescheduleUserId, status } = req.body;
+
+    if (!locationId || !rescheduledate || !rescheduleUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "locationId, rescheduledate and rescheduleUserId are required",
+      });
+    }
+
+    let parsedDate;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rescheduledate)) {
+      parsedDate = new Date(rescheduledate + "T00:00:00.000Z");
+    } else {
+      parsedDate = new Date(rescheduledate);
+    }
+
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid date format" });
+    }
+
+    const location = await Location.findById(locationId);
+    if (!location) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+
+    const allowedStatus = ["Pending", "Reschedule"];
+    let finalStatus;
+    if (status && allowedStatus.includes(status)) {
+      finalStatus = status;
+    } else {
+      finalStatus = location.rescheduledate ? "Reschedule" : "Pending";
+    }
+
+    location.rescheduledate = parsedDate;
+    location.rescheduleStatus = finalStatus;
+    location.rescheduleUserId = rescheduleUserId;
+    await location.save();
+
+    res.status(200).json({ success: true, message: "Reschedule request processed", data: location });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error requesting reschedule", error: error.message });
+  }
+};
+
+// ============================================================
+// UPDATE RESCHEDULE STATUS (Accepted / Rejected)
+// ============================================================
+export const updateRescheduleStatus = async (req, res) => {
+  try {
+    const { locationId } = req.params;
+    const { status, scheduleDate } = req.body;
+
+    if (!locationId || !status) {
+      return res.status(400).json({ success: false, message: "locationId and status are required" });
+    }
+
+    if (!["Accepted", "Rejected"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Status must be Accepted or Rejected" });
+    }
+
+    const location = await Location.findById(locationId);
+    if (!location) {
+      return res.status(404).json({ success: false, message: "Location not found" });
+    }
+
+    if (!location.rescheduledate) {
+      return res.status(400).json({ success: false, message: "No reschedule request found" });
+    }
+
+    if (status === "Accepted" && !scheduleDate) {
+      return res.status(400).json({ success: false, message: "scheduleDate is required when accepting" });
+    }
+
+    location.rescheduleStatus = status;
+    if (status === "Accepted") location.scheduleDate = new Date(scheduleDate);
+    if (status === "Rejected") location.scheduleDate = null;
+    location.updatedAt = new Date();
+
+    await location.save();
+
+    res.status(200).json({ success: true, message: `Reschedule ${status}`, data: location });
+  } catch (error) {
+    console.error("ERROR:", error);
+    res.status(500).json({ success: false, message: "Error updating reschedule status", error: error.message });
+  }
+};
+
+// ============================================================
+// GET RESCHEDULE DETAILS
+// ============================================================
+export const getRescheduleDetails = async (req, res) => {
+  try {
+    const { locationId, rescheduleUserId } = req.query;
+
+    if (!locationId || !rescheduleUserId) {
+      return res.status(400).json({ success: false, message: "locationId and rescheduleUserId are required" });
+    }
+
+    const location = await Location.findOne({
+      _id: locationId,
+      rescheduleUserId,
+    }).select("rescheduledate scheduleDate rescheduleStatus rescheduleUserId");
+
+    if (!location) {
+      return res.status(404).json({ success: false, message: "No reschedule data found for this user and job" });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        requestedDate: location.rescheduledate,
+        finalDate: location.scheduleDate,
+        status: location.rescheduleStatus || "Pending",
+        rescheduleUserId: location.rescheduleUserId,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching reschedule details:", error);
+    res.status(500).json({ success: false, message: "Error fetching reschedule details", error: error.message });
+  }
+};
