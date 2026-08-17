@@ -150,11 +150,12 @@ export const updateUserRole = async (req, res) => {
 };
 
 /**
- * Delete User Role
+ * Delete User Role By User Id
  */
 export const deleteUserRole = async (req, res) => {
     try {
-        const role = await UserRoleModel.findByIdAndDelete(req.params.id);
+        const userId = req.params.userId 
+        const role = await UserRoleModel.findOneAndDelete({ userId });
 
         if (!role) {
             return res.status(404).json({

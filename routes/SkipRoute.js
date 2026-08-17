@@ -18,16 +18,16 @@ router.post("/createSkip", createSkip);
 router.get("/skiprecord/:userId", getSkipByUserId);
 
 // Get all skip records
-router.get("/", getAllSkips);
+router.get("/getAllSkips", getAllSkips);
 
 // Update skip record (full update)
-router.put("/:userId", updateSkip);
+router.put("/updateSkip/:userId", updateSkip);
 
 // Update specific field
-router.patch("/:userId/:field", updateSkipField);
+router.patch("/updateSkipField/:userId/:field", updateSkipField);
 
 // Delete skip record
-router.delete("/:userId", deleteSkip);
+router.delete("/deleteSkip/:userId", deleteSkip);
 
 // Create or update skip record (upsert)
 router.post("/upsert", upsertSkip);

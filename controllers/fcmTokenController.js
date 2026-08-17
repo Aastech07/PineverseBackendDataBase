@@ -1,11 +1,52 @@
 import FcmToken from "../models/FcmTokenModel.js";
 
+// export const upsertFcmToken = async (req, res) => {
+//   try {
+//     const userIdRaw = req.body.userId;
+//     const fcmTokenRaw = req.body.fcmToken;
+//     const userId = userIdRaw != null ? String(userIdRaw).trim() : "";
+//     const fcmToken = fcmTokenRaw != null ? String(fcmTokenRaw).trim() : "";
+
+//     if (!userId || !fcmToken) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId and fcmToken are required",
+//       });
+//     }
+
+//     const savedToken = await FcmToken.findOneAndUpdate(
+//       { userId },
+//       { userId, fcmToken },
+//       { new: true, upsert: true, setDefaultsOnInsert: true },
+//     );
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "FCM token saved successfully",
+//       data: savedToken,
+//     });
+
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to save FCM token",
+//       error: error.message,
+//     });
+//   }
+// };
 export const upsertFcmToken = async (req, res) => {
   try {
-    const userIdRaw = req.body.userId;
-    const fcmTokenRaw = req.body.fcmToken;
-    const userId = userIdRaw != null ? String(userIdRaw).trim() : "";
-    const fcmToken = fcmTokenRaw != null ? String(fcmTokenRaw).trim() : "";
+    const userId = String(req.body.userId || "").trim();
+    const fcmToken = String(req.body.fcmToken || "").trim();
+    const user_role = String(req.body.user_role || "").trim();
+
+    console.log("========== FCM REQUEST ==========");
+    console.log({
+      userId,
+      user_role,
+      token: fcmToken.substring(0, 30) + "...",
+    });
+    console.log("================================");
 
     if (!userId || !fcmToken) {
       return res.status(400).json({
@@ -14,10 +55,24 @@ export const upsertFcmToken = async (req, res) => {
       });
     }
 
+    const updateData = {
+      userId,
+      fcmToken,
+    };
+
+    // Save role only if it is received
+    if (user_role) {
+      updateData.user_role = user_role;
+    }
+
     const savedToken = await FcmToken.findOneAndUpdate(
       { userId },
-      { userId, fcmToken },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
+      { $set: updateData },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      }
     );
 
     return res.status(200).json({
@@ -25,8 +80,9 @@ export const upsertFcmToken = async (req, res) => {
       message: "FCM token saved successfully",
       data: savedToken,
     });
-    
   } catch (error) {
+    console.error("FCM Save Error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to save FCM token",

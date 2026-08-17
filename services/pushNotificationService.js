@@ -403,14 +403,16 @@ const createNotificationRecords = async ({
   await PushNotification.insertMany(docs);
 };
 
-const cleanupInvalidTokens = async (invalidTokens = []) => {
-  if (!invalidTokens.length) return;
-  try {
-    await FcmToken.deleteMany({ fcmToken: { $in: invalidTokens } });
-  } catch (error) {
-    console.error("❌ Failed to cleanup invalid FCM tokens:", error.message);
-  }
-};
+// const cleanupInvalidTokens = async (invalidTokens = []) => {
+//   console.log("Deleting Invalid Tokens:");
+//   console.log(invalidTokens);
+//   if (!invalidTokens.length) return;
+//   try {
+//     await FcmToken.deleteMany({ fcmToken: { $in: invalidTokens } });
+//   } catch (error) {
+//     console.error("❌ Failed to cleanup invalid FCM tokens:", error.message);
+//   }
+// };
 
 const sendToTokens = async ({ tokenDocs, title, body, data = {} }) => {
   const uniqueDocs = [];
@@ -447,6 +449,15 @@ const sendToTokens = async ({ tokenDocs, title, body, data = {} }) => {
 
   for (let offset = 0; offset < uniqueDocs.length; offset += FCM_MULTICAST_MAX) {
     const chunk = uniqueDocs.slice(offset, offset + FCM_MULTICAST_MAX);
+    console.log("==================================");
+    console.log("Firebase Project:", process.env.FIREBASE_PROJECT_ID);
+    console.log("Total Tokens:", chunk.length);
+    console.log("Tokens:");
+    console.log(chunk.map(x => ({
+      userId: x.userId,
+      token: x.fcmToken.substring(0, 40) + "..."
+    })));
+    console.log("==================================");
     const response = await admin.messaging().sendEachForMulticast({
       tokens: chunk.map((doc) => doc.fcmToken),
       ...multicastBase,
@@ -497,7 +508,7 @@ const sendToTokens = async ({ tokenDocs, title, body, data = {} }) => {
     });
   }
 
-  await cleanupInvalidTokens(invalidTokens);
+ // await cleanupInvalidTokens(invalidTokens);
 
   return {
     successCount,

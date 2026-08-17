@@ -27,6 +27,6 @@ router.get("/getUserRoleById/:id", getUserRoleById);
 router.put("/updateUserRole/:id", updateUserRole);
 
 // Delete
-router.delete("/:id", deleteUserRole);
+router.delete("/deleteUserRole/:userId", deleteUserRole);
 
 export default router;

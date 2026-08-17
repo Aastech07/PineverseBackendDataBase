@@ -1,7 +1,6 @@
 // routes/transactions.js
 import express from "express";
 import {
-
   listTransactions,
   deleteTransaction,
   createTransaction,
@@ -16,8 +15,6 @@ router.post("/createTransaction", createTransaction);
 
 // List / filter
 router.get("/", listTransactions);
-
-// Get single
 
 // Update partial/full
 router.put("/updateTransaction", updateTransaction);

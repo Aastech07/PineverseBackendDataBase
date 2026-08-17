@@ -91,7 +91,7 @@ export const getAllSkips = async (req, res) => {
 export const updateSkip = async (req, res) => {
     try {
         const { userId } = req.params;
-        const { Businessinfolocation, ServiesLocation, SerivesPortfolio } = req.body;
+        const { Businessinfolocation, ServiesLocation, SerivesPortfolio, BusinessinfoDoc } = req.body;
 
         const skip = await Skip.findOne({ userId });
 

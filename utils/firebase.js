@@ -67,56 +67,110 @@
 
 
 
+// import admin from "firebase-admin";
+
+// function loadServiceAccount() {
+//   return {
+//     projectId: process.env.FIREBASE_PROJECT_ID,
+//     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+//     privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+//   };
+// }
+
+// const serviceAccount = loadServiceAccount();
+
+// if (
+//   !serviceAccount.projectId ||
+//   !serviceAccount.clientEmail ||
+//   !serviceAccount.privateKey
+// ) {
+//   throw new Error(
+//     "❌ Missing Firebase environment variables. Check Render Environment Variables.",
+//   );
+// }
+
+// if (!admin.apps.length) {
+//   admin.initializeApp({
+//     credential: admin.credential.cert(serviceAccount),
+//   });
+
+//   console.log("✅ Firebase Admin Initialized");
+//   console.log(`📱 Firebase Project: ${serviceAccount.projectId}`);
+// }
+
+// /** Verify credentials on startup */
+// export async function verifyFirebaseCredentials() {
+//   try {
+//     await admin.app().options.credential.getAccessToken();
+
+//     console.log(
+//       "✅ Firebase Admin credentials OK (push notifications enabled)",
+//     );
+//   } catch (e) {
+//     console.error(
+//       "❌ Firebase Admin credentials INVALID — push notifications will NOT work.",
+//     );
+
+//     console.error("   ", e.message);
+//     console.error(
+//       "   Fix: Check these environment variables are set correctly:",
+//       "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY",
+//     );
+//     throw new Error("Firebase credentials verification failed. Push notifications disabled.");
+//   }
+// }
+
+// export default admin;
+
+
+
 import admin from "firebase-admin";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-function loadServiceAccount() {
-  return {
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-  };
-}
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const serviceAccount = loadServiceAccount();
+// Load Firebase Service Account
+const serviceAccount = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, "../services/firebase-service-account.json"),
+    "utf8"
+  )
+);
 
-if (
-  !serviceAccount.projectId ||
-  !serviceAccount.clientEmail ||
-  !serviceAccount.privateKey
-) {
-  throw new Error(
-    "❌ Missing Firebase environment variables. Check Render Environment Variables.",
-  );
-}
-
+// Initialize Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
 
+  console.log("====================================");
   console.log("✅ Firebase Admin Initialized");
-  console.log(`📱 Firebase Project: ${serviceAccount.projectId}`);
+  console.log("📱 Project ID :", serviceAccount.project_id);
+  console.log("📧 Client Email :", serviceAccount.client_email);
+  console.log("====================================");
 }
 
-/** Verify credentials on startup */
+// Verify Firebase Credentials
 export async function verifyFirebaseCredentials() {
   try {
-    await admin.app().options.credential.getAccessToken();
+    const token = await admin.app().options.credential.getAccessToken();
 
+    console.log("====================================");
+    console.log("✅ Firebase Admin credentials OK");
     console.log(
-      "✅ Firebase Admin credentials OK (push notifications enabled)",
+      "🔑 Access Token:",
+      token?.access_token ? "Generated Successfully" : "Failed"
     );
-  } catch (e) {
-    console.error(
-      "❌ Firebase Admin credentials INVALID — push notifications will NOT work.",
-    );
-
-    console.error("   ", e.message);
-    console.error(
-      "   Fix: Check these environment variables are set correctly:",
-      "FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY",
-    );
-    throw new Error("Firebase credentials verification failed. Push notifications disabled.");
+    console.log("====================================");
+  } catch (error) {
+    console.error("====================================");
+    console.error("❌ Firebase Admin credentials INVALID");
+    console.error(error);
+    console.error("====================================");
+    throw error;
   }
 }
 
