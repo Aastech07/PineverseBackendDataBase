@@ -73,4 +73,8 @@ ios/*.xcuserstate
 # Firebase credentials
 utils/serviceAccountKey.json
 config/chatapp-2a76c-firebase-adminsdk-fbsvc-caf80ecfc7.json
+services/firebase-service-account.json
+
+# Large zip files
+*.zip
 
