@@ -265,8 +265,8 @@ const bidSchema = new mongoose.Schema(
     },
     validityOfQuote: {
       type: String,
-      enum: ['7 Days', '10 Days', '1 Month'],
-      default: '7 Days',
+      enum: ['1 Day', '2 Days', '3 Days'],
+      default: '1 Days',
       required: true,
     },
 

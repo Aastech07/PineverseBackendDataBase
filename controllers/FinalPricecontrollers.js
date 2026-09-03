@@ -429,19 +429,7 @@ export const deleteTransaction = async (req, res) => {
   }
 };
 
-/**
- * Get latest finalPrice by senderId + receiverId
- * Accepts senderId/receiverId/bidId in body (POST) or query (GET)
- *
- * ✅ KEY FIX: Now scoped by bidId — will NOT return a transaction
- *    from a different bid between the same two users.
- *
- * Example scenario this fixes:
- *   User A posted job1 → User B accepted (transaction saved with bidId="bid1", ActiveStatus="Accept")
- *   User B posts job2 → User A bids → chat opens
- *   WITHOUT this fix: returns bid1's "Accept" status → chat broken immediately
- *   WITH this fix:    bidId="bid2" finds nothing → 404 → fresh chat state ✅
- */
+
 export const getPriceBySenderReceiver = async (req, res) => {
   try {
     const senderId = req.body?.senderId ?? req.query?.senderId;
@@ -492,3 +480,7 @@ export const getPriceBySenderReceiver = async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 };
+
+
+
+

@@ -7,7 +7,7 @@ import {
     getRoleByUserId,
     updateUserRole,
     deleteUserRole,
-} from "../controllers/UserRoleModel.js";
+} from "../controllers/UserRoleController.js";
 
 const router = express.Router();
 

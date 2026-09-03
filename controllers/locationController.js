@@ -1831,296 +1831,296 @@ const normalizeServiceRequestIds = (value) => {
 
 
 export const createLocation = async (req, res) => {
+  try {
+    const {
+      userId,
+      name,
+      image,
+      pickup,
+      drop,
+      jobDetails,
+      inventory,
+      serviceDetails,
+      moveType,
+      liftAvailable,
+      PickUpFloorNo,
+      DropFloorNo,
+      truckSize,
+      packingLayers,
+      storageDuration,
+      additionalServices,
+      jobName,
+      Servicerequestid,
+      bids,
+      termsAccepted,
+      publishType,
+    } = req.body;
+
+    const rawServiceRequestIds =
+      req.body.Servicerequestid ??
+      req.body.Serivrequesid ??
+      req.body.serviceRequestId ??
+      req.body.serviceRequestIds;
+
+    const serviceRequestIds = normalizeServiceRequestIds(
+      rawServiceRequestIds ?? Servicerequestid,
+    );
+
+    const newLocation = new Location({
+      userId,
+      name: name || "",
+      image: image || "",
+      jobName: jobName || "",
+      publishType: publishType || "marketplace",
+
+      pickup: {
+        location: pickup?.location || "",
+        city: pickup?.city || "",
+        state: pickup?.state || "",
+        addressLine1: pickup?.addressLine1 || "",
+        addressLine2: pickup?.addressLine2 || "",
+        pincode: pickup?.pincode || "",
+      },
+
+      drop: {
+        location: drop?.location || "",
+        city: drop?.city || "",
+        state: drop?.state || "",
+        addressLine1: drop?.addressLine1 || "",
+        addressLine2: drop?.addressLine2 || "",
+        pincode: drop?.pincode || "",
+      },
+
+      jobDetails: {
+        // ── Core ──────────────────────────────────────────
+        dateOfPacking: jobDetails?.dateOfPacking || null,
+        propertySize: jobDetails?.propertySize || "",
+        truckSize: truckSize || jobDetails?.truckSize || "",
+        status: "Job Posted",
+        progressStep: 0,
+
+        // ── Transport ──────────────────────────────────────
+        transportDescription: jobDetails?.transportDescription || "",
+        distance: jobDetails?.distance || "",
+        goodsType: jobDetails?.goodsType || "",
+
+        // ── Storage ────────────────────────────────────────
+        warehouseLocationRequired: jobDetails?.warehouseLocationRequired || "",
+        storageDuration: jobDetails?.storageDuration || storageDuration || "",
+        storageNotes: jobDetails?.storageNotes || "",
+        handoverDate: jobDetails?.handoverDate || null,
+        vacateDate: jobDetails?.vacateDate || null,
+
+        // ── Packing ────────────────────────────────────────
+        // packingRequired: jobDetails?.packingRequired || "No",
+        packingRequired:
+          jobDetails?.packingRequired === true
+            ? "Yes"
+            : jobDetails?.packingRequired === false
+              ? "No"
+              : jobDetails?.packingRequired || "No",
+        packingDays: Number(jobDetails?.packingDays) || 0,
+        selectedPackingLayers: jobDetails?.selectedPackingLayers || [],
+        selectedPackingPackages: jobDetails?.selectedPackingPackages || [],
+        selectedReturnable: jobDetails?.selectedReturnable || "",
+
+        // ── Labour / Box ───────────────────────────────────
+        boxCount: Number(jobDetails?.boxCount) || 0,
+        labourCount: Number(jobDetails?.labourCount) || 0,
+
+        // ── Custom / Misc ──────────────────────────────────
+        customServiceDescription: jobDetails?.customServiceDescription || "",
+        additionalCustomNotes: jobDetails?.additionalCustomNotes || "",
+        preferredContactTime: jobDetails?.preferredContactTime || "",
+      },
+
+      inventory:
+        inventory?.map((item) => ({
+          title: item.title || "",
+          subtitle: item.subtitle || "",
+          qty: Number(item.qty) || 0,
+        })) || [],
+
+      serviceDetails: {
+        packingRequired: serviceDetails?.packingRequired || "No",
+        insuranceRequired: serviceDetails?.insuranceRequired || "No",
+        estimatedValue: serviceDetails?.estimatedValue || "",
+        storageRequired: serviceDetails?.storageRequired || "No",
+        dismantlingRequired: serviceDetails?.dismantlingRequired || "No",
+        packingLayers: packingLayers || [],
+        storageDuration: storageDuration || "",
+        additionalServices: additionalServices || [],
+      },
+
+      moveType: moveType || "",
+      liftAvailable: liftAvailable || "",
+      PickUpFloorNo: PickUpFloorNo || "",
+      DropFloorNo: DropFloorNo || "",
+      bids: bids || [],
+
+      Servicerequestid: serviceRequestIds,
+      termsAccepted: termsAccepted === 1 ? 1 : 0,
+
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const savedLocation = await newLocation.save();
+
+    // Initialise Status tracker
     try {
-        const {
-            userId,
-            name,
-            image,
-            pickup,
-            drop,
-            jobDetails,
-            inventory,
-            serviceDetails,
-            moveType,
-            liftAvailable,
-            PickUpFloorNo,
-            DropFloorNo,
-            truckSize,
-            packingLayers,
-            storageDuration,
-            additionalServices,
-            jobName,
-            Servicerequestid,
-            bids,
-            termsAccepted,
-            publishType,
-        } = req.body;
-
-        const rawServiceRequestIds =
-            req.body.Servicerequestid ??
-            req.body.Serivrequesid ??
-            req.body.serviceRequestId ??
-            req.body.serviceRequestIds;
-
-        const serviceRequestIds = normalizeServiceRequestIds(
-            rawServiceRequestIds ?? Servicerequestid,
-        );
-
-        const newLocation = new Location({
-            userId,
-            name: name || "",
-            image: image || "",
-            jobName: jobName || "",
-            publishType: publishType || "marketplace",
-
-            pickup: {
-                location: pickup?.location || "",
-                city: pickup?.city || "",
-                state: pickup?.state || "",
-                addressLine1: pickup?.addressLine1 || "",
-                addressLine2: pickup?.addressLine2 || "",
-                pincode: pickup?.pincode || "",
-            },
-
-            drop: {
-                location: drop?.location || "",
-                city: drop?.city || "",
-                state: drop?.state || "",
-                addressLine1: drop?.addressLine1 || "",
-                addressLine2: drop?.addressLine2 || "",
-                pincode: drop?.pincode || "",
-            },
-
-            jobDetails: {
-                // ── Core ──────────────────────────────────────────
-                dateOfPacking: jobDetails?.dateOfPacking || null,
-                propertySize: jobDetails?.propertySize || "",
-                truckSize: truckSize || jobDetails?.truckSize || "",
-                status: "Job Posted",
-                progressStep: 0,
-
-                // ── Transport ──────────────────────────────────────
-                transportDescription: jobDetails?.transportDescription || "",
-                distance: jobDetails?.distance || "",
-                goodsType: jobDetails?.goodsType || "",
-
-                // ── Storage ────────────────────────────────────────
-                warehouseLocationRequired: jobDetails?.warehouseLocationRequired || "",
-                storageDuration: jobDetails?.storageDuration || storageDuration || "",
-                storageNotes: jobDetails?.storageNotes || "",
-                handoverDate: jobDetails?.handoverDate || null,
-                vacateDate: jobDetails?.vacateDate || null,
-
-                // ── Packing ────────────────────────────────────────
-                // packingRequired: jobDetails?.packingRequired || "No",
-                packingRequired:
-                    jobDetails?.packingRequired === true
-                        ? "Yes"
-                        : jobDetails?.packingRequired === false
-                            ? "No"
-                            : jobDetails?.packingRequired || "No",
-                packingDays: Number(jobDetails?.packingDays) || 0,
-                selectedPackingLayers: jobDetails?.selectedPackingLayers || [],
-                selectedPackingPackages: jobDetails?.selectedPackingPackages || [],
-                selectedReturnable: jobDetails?.selectedReturnable || "",
-
-                // ── Labour / Box ───────────────────────────────────
-                boxCount: Number(jobDetails?.boxCount) || 0,
-                labourCount: Number(jobDetails?.labourCount) || 0,
-
-                // ── Custom / Misc ──────────────────────────────────
-                customServiceDescription: jobDetails?.customServiceDescription || "",
-                additionalCustomNotes: jobDetails?.additionalCustomNotes || "",
-                preferredContactTime: jobDetails?.preferredContactTime || "",
-            },
-
-            inventory:
-                inventory?.map((item) => ({
-                    title: item.title || "",
-                    subtitle: item.subtitle || "",
-                    qty: Number(item.qty) || 0,
-                })) || [],
-
-            serviceDetails: {
-                packingRequired: serviceDetails?.packingRequired || "No",
-                insuranceRequired: serviceDetails?.insuranceRequired || "No",
-                estimatedValue: serviceDetails?.estimatedValue || "",
-                storageRequired: serviceDetails?.storageRequired || "No",
-                dismantlingRequired: serviceDetails?.dismantlingRequired || "No",
-                packingLayers: packingLayers || [],
-                storageDuration: storageDuration || "",
-                additionalServices: additionalServices || [],
-            },
-
-            moveType: moveType || "",
-            liftAvailable: liftAvailable || "",
-            PickUpFloorNo: PickUpFloorNo || "",
-            DropFloorNo: DropFloorNo || "",
-            bids: bids || [],
-
-            Servicerequestid: serviceRequestIds,
-            termsAccepted: termsAccepted === 1 ? 1 : 0,
-
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
-
-        const savedLocation = await newLocation.save();
-
-        // Initialise Status tracker
-        try {
-            await Status.findOneAndUpdate(
-                { JobId: savedLocation._id.toString() },
-                { status: "Job Posted", JobId: savedLocation._id.toString() },
-                { upsert: true, new: true },
-            );
-            console.log(`📡 Status initialized for Job: ${savedLocation._id}`);
-        } catch (statusError) {
-            console.error(
-                "⚠️ Failed to initialize status tracker:",
-                statusError.message,
-            );
-        }
-
-        // Notify all users except job owner
-        // await sendNotificationToAllExcept({
-        //   excludeUserIds: [String(userId)],
-        //   title: "New Job Posted",
-        //   body: `${name || "A user"} posted a new shifting job${jobName ? `: ${jobName}` : ""}`,
-        //   senderId: String(userId || ""),
-        //   eventType: "job_posted",
-        //   data: {
-        //     type: "job_posted",
-        //     jobId: savedLocation._id.toString(),
-        //     postedBy: String(userId || ""),
-        //     jobName: String(jobName || ""),
-        //   },
-        //   payload: {
-        //     job: savedLocation.toObject(),
-        //     senderId: String(userId || ""),
-        //   },
-        // });
-        // Notify all users except job owner
-        // ───────────────── JOB POST NOTIFICATION ─────────────────
-
-        try {
-
-            console.log("🚀 Notification process started");
-
-            console.log("📢 Publish Type:", publishType);
-
-            // ✅ MARKETPLACE → ALL VENDORS
-            if (publishType === "marketplace") {
-
-                console.log("🌍 Sending notification to ALL vendors");
-
-                await sendNotificationToAllExcept({
-
-                    excludeUserIds: [String(userId)],
-
-                    title: "New Job Posted",
-
-                    body: `${name || "A user"} posted a job in ${pickup?.city || ""}`,
-
-                    senderId: String(userId || ""),
-
-                    eventType: "job_posted",
-
-                    data: {
-                        type: "job_posted",
-                        jobId: savedLocation._id.toString(),
-                        postedBy: String(userId || ""),
-                        jobName: String(jobName || ""),
-                    },
-
-                    payload: {
-                        job: savedLocation.toObject(),
-                        senderId: String(userId || ""),
-                    },
-                });
-
-                console.log("✅ Marketplace notification completed");
-            }
-
-            // ✅ SELECTED VENDORS ONLY
-            else if (
-                publishType === "selected" &&
-                serviceRequestIds.length
-            ) {
-
-                console.log("🎯 Sending notification to selected vendors");
-
-                console.log("👥 Selected Vendor IDs:", serviceRequestIds);
-
-                await sendNotificationToUsers({
-
-                    userIds: serviceRequestIds,
-
-                    senderId: String(userId || ""),
-
-                    eventType: "job_posted",
-
-                    title: "New Job Posted",
-
-                    body: `${name || "A user"} posted a job in ${pickup?.city || ""}`,
-
-                    data: {
-                        type: "job_posted",
-                        jobId: savedLocation._id.toString(),
-                        postedBy: String(userId || ""),
-                        jobName: String(jobName || ""),
-                    },
-
-                    payload: {
-                        job: savedLocation.toObject(),
-                        senderId: String(userId || ""),
-                        receiverIds: serviceRequestIds,
-                    },
-                });
-
-                console.log("✅ Selected vendor notification completed");
-            }
-
-        } catch (notificationError) {
-
-            console.error("❌ Notification Error:", notificationError);
-
-        }
-        // Notify specific service-request user IDs
-        if (serviceRequestIds.length) {
-            await sendNotificationToUsers({
-                userIds: serviceRequestIds,
-                senderId: String(userId || ""),
-                eventType: "job_posted",
-                title: "New Job Posted",
-                body: `${name || "A user"} posted a new job${jobName ? `: ${jobName}` : ""}`,
-                data: {
-                    type: "job_posted",
-                    jobId: savedLocation._id.toString(),
-                    postedBy: String(userId || ""),
-                    jobName: String(jobName || ""),
-                },
-                payload: {
-                    job: savedLocation.toObject(),
-                    senderId: String(userId || ""),
-                    receiverIds: serviceRequestIds,
-                },
-            });
-        }
-
-        res.status(201).json({
-            success: true,
-            message: "Location created successfully",
-            data: savedLocation,
-        });
-    } catch (error) {
-        console.error("Error creating location:", error);
-        res.status(500).json({
-            success: false,
-            message: "Error creating location",
-            error: error.message,
-        });
+      await Status.findOneAndUpdate(
+        { JobId: savedLocation._id.toString() },
+        { status: "Job Posted", JobId: savedLocation._id.toString() },
+        { upsert: true, new: true },
+      );
+      console.log(`📡 Status initialized for Job: ${savedLocation._id}`);
+    } catch (statusError) {
+      console.error(
+        "⚠️ Failed to initialize status tracker:",
+        statusError.message,
+      );
     }
+
+    // Notify all users except job owner
+    // await sendNotificationToAllExcept({
+    //   excludeUserIds: [String(userId)],
+    //   title: "New Job Posted",
+    //   body: `${name || "A user"} posted a new shifting job${jobName ? `: ${jobName}` : ""}`,
+    //   senderId: String(userId || ""),
+    //   eventType: "job_posted",
+    //   data: {
+    //     type: "job_posted",
+    //     jobId: savedLocation._id.toString(),
+    //     postedBy: String(userId || ""),
+    //     jobName: String(jobName || ""),
+    //   },
+    //   payload: {
+    //     job: savedLocation.toObject(),
+    //     senderId: String(userId || ""),
+    //   },
+    // });
+    // Notify all users except job owner
+    // ───────────────── JOB POST NOTIFICATION ─────────────────
+
+    try {
+
+      console.log("🚀 Notification process started");
+
+      console.log("📢 Publish Type:", publishType);
+
+      // ✅ MARKETPLACE → ALL VENDORS
+      if (publishType === "marketplace") {
+
+        console.log("🌍 Sending notification to ALL vendors");
+
+        await sendNotificationToAllExcept({
+
+          excludeUserIds: [String(userId)],
+
+          title: "New Job Posted",
+
+          body: `${name || "A user"} posted a job in ${pickup?.city || ""}`,
+
+          senderId: String(userId || ""),
+
+          eventType: "job_posted",
+
+          data: {
+            type: "job_posted",
+            jobId: savedLocation._id.toString(),
+            postedBy: String(userId || ""),
+            jobName: String(jobName || ""),
+          },
+
+          payload: {
+            job: savedLocation.toObject(),
+            senderId: String(userId || ""),
+          },
+        });
+
+        console.log("✅ Marketplace notification completed");
+      }
+
+      // ✅ SELECTED VENDORS ONLY
+      else if (
+        publishType === "selected" &&
+        serviceRequestIds.length
+      ) {
+
+        console.log("🎯 Sending notification to selected vendors");
+
+        console.log("👥 Selected Vendor IDs:", serviceRequestIds);
+
+        await sendNotificationToUsers({
+
+          userIds: serviceRequestIds,
+
+          senderId: String(userId || ""),
+
+          eventType: "job_posted",
+
+          title: "New Job Posted",
+
+          body: `${name || "A user"} posted a job in ${pickup?.city || ""}`,
+
+          data: {
+            type: "job_posted",
+            jobId: savedLocation._id.toString(),
+            postedBy: String(userId || ""),
+            jobName: String(jobName || ""),
+          },
+
+          payload: {
+            job: savedLocation.toObject(),
+            senderId: String(userId || ""),
+            receiverIds: serviceRequestIds,
+          },
+        });
+
+        console.log("✅ Selected vendor notification completed");
+      }
+
+    } catch (notificationError) {
+
+      console.error("❌ Notification Error:", notificationError);
+
+    }
+    // Notify specific service-request user IDs
+    if (serviceRequestIds.length) {
+      await sendNotificationToUsers({
+        userIds: serviceRequestIds,
+        senderId: String(userId || ""),
+        eventType: "job_posted",
+        title: "New Job Posted",
+        body: `${name || "A user"} posted a new job${jobName ? `: ${jobName}` : ""}`,
+        data: {
+          type: "job_posted",
+          jobId: savedLocation._id.toString(),
+          postedBy: String(userId || ""),
+          jobName: String(jobName || ""),
+        },
+        payload: {
+          job: savedLocation.toObject(),
+          senderId: String(userId || ""),
+          receiverIds: serviceRequestIds,
+        },
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Location created successfully",
+      data: savedLocation,
+    });
+  } catch (error) {
+    console.error("Error creating location:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error creating location",
+      error: error.message,
+    });
+  }
 };
 // ============================================================
 // REJECT JOB
@@ -2367,6 +2367,49 @@ export const getLocationById = async (req, res) => {
 // ============================================================
 // GET LOCATIONS BY USER ID
 // ============================================================
+// Helper for date labeling
+const getRelativeDateLabel = (dateInput) => {
+  if (!dateInput) return "Unknown";
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return "Unknown";
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const bidStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const diffTime = bidStart.getTime() - todayStart.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === -1) return "Yesterday";
+  if (diffDays === 1) return "Tomorrow";
+  if (diffDays < -1 && diffDays >= -7) return `${Math.abs(diffDays)} days ago`;
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const isAcceptedStatus = (statusStr) => {
+  if (!statusStr) return false;
+  const s = String(statusStr).toLowerCase().trim();
+  return ["accepted", "completed", "accept", "accepted quote", "quote accepted", "job accepted"].includes(s);
+};
+
+const isRejectedStatus = (statusStr) => {
+  if (!statusStr) return false;
+  const s = String(statusStr).toLowerCase().trim();
+  return ["rejected", "cancelled", "cancel", "reject", "quote rejected", "job rejected"].includes(s);
+};
+
+const isUnderNegotiationStatus = (statusStr) => {
+  if (!statusStr) return false;
+  const s = String(statusStr).toLowerCase().trim();
+  return ["under negotiation", "negotiate", "under_negotiation", "undernegotiation"].includes(s);
+};
+
 export const getLocationsByUserId = async (req, res) => {
   try {
     const locations = await Location.find({ userId: req.params.userId }).sort({ createdAt: -1 });
@@ -2375,7 +2418,163 @@ export const getLocationsByUserId = async (req, res) => {
       return res.status(404).json({ success: false, message: "No locations found for this user" });
     }
 
-    res.status(200).json({ success: true, count: locations.length, data: locations });
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+    const dayAfterTomorrowStart = new Date(tomorrowStart);
+    dayAfterTomorrowStart.setDate(dayAfterTomorrowStart.getDate() + 1);
+
+    const sevenDaysAgoStart = new Date(todayStart);
+    sevenDaysAgoStart.setDate(sevenDaysAgoStart.getDate() - 7);
+
+    const locationsWithBidDetails = await Promise.all(
+      locations.map(async (loc) => {
+        // Fetch bids from Bid model
+        const dbBids = await Bid.find({
+          $or: [{ jobId: loc._id }, { jobId: loc._id.toString() }],
+        }).sort({ createdAt: -1, submittedAt: -1 });
+
+        // Merge with embedded location bids if present
+        const embeddedBids = Array.isArray(loc.bids) ? loc.bids : [];
+        const dbBidIds = new Set(dbBids.map((b) => b._id.toString()));
+
+        const combinedBids = [
+          ...dbBids,
+          ...embeddedBids.filter((eb) => !eb._id || !dbBidIds.has(eb._id.toString())),
+        ];
+
+        let totalBidCount = combinedBids.length;
+        let activeBidCount = 0; // Decrements when accepted or rejected
+        let acceptedBidCount = 0;
+        let rejectedBidCount = 0;
+        let underNegotiationBidCount = 0;
+
+        let newBidsTodayCount = 0;
+        let newBidsYesterdayCount = 0;
+        let newBidsTomorrowCount = 0;
+        let newBidsThisWeekCount = 0;
+
+        const bidsByDateLabel = {
+          today: 0,
+          yesterday: 0,
+          tomorrow: 0,
+          thisWeek: 0,
+          older: 0,
+        };
+
+        let hasUnderNegotiation = isUnderNegotiationStatus(loc.jobDetails?.status);
+
+        const formattedBids = combinedBids.map((bidObj) => {
+          const bidDoc = bidObj._doc ? { ...bidObj._doc } : { ...bidObj };
+          const bidDate = new Date(bidDoc.submittedAt || bidDoc.createdAt || Date.now());
+          const dateLabel = getRelativeDateLabel(bidDate);
+
+          const status1 = bidDoc.activeStatus;
+          const status2 = bidDoc.ActiveUserStatus;
+          const status3 = bidDoc.status;
+
+          const isAcc = isAcceptedStatus(status1) || isAcceptedStatus(status2) || isAcceptedStatus(status3);
+          const isRej = isRejectedStatus(status1) || isRejectedStatus(status2) || isRejectedStatus(status3);
+          const isNeg = isUnderNegotiationStatus(status1) || isUnderNegotiationStatus(status2) || isUnderNegotiationStatus(status3);
+
+          if (isNeg) {
+            hasUnderNegotiation = true;
+            underNegotiationBidCount++;
+          }
+
+          if (isAcc) {
+            acceptedBidCount++;
+          } else if (isRej) {
+            rejectedBidCount++;
+          } else {
+            activeBidCount++; // Active/Pending count (decrements on accept/reject)
+
+            if (!isNeg) {
+              const bTime = bidDate.getTime();
+              if (bTime >= todayStart.getTime() && bTime < tomorrowStart.getTime()) {
+                newBidsTodayCount++;
+                bidsByDateLabel.today++;
+              }
+            }
+          }
+
+          // Date counters for Yesterday, Tomorrow, Older & Weekly breakdown (including rejected bids)
+          const bTime = bidDate.getTime();
+
+          if (bTime >= yesterdayStart.getTime() && bTime < todayStart.getTime()) {
+            newBidsYesterdayCount++;
+            bidsByDateLabel.yesterday++;
+          } else if (bTime >= tomorrowStart.getTime() && bTime < dayAfterTomorrowStart.getTime()) {
+            newBidsTomorrowCount++;
+            bidsByDateLabel.tomorrow++;
+          } else if (bTime < yesterdayStart.getTime()) {
+            bidsByDateLabel.older++;
+          }
+
+          if (bTime >= sevenDaysAgoStart.getTime()) {
+            newBidsThisWeekCount++;
+            bidsByDateLabel.thisWeek++;
+          }
+
+          return {
+            ...bidDoc,
+            dateLabel,
+            receivedLabel: dateLabel,
+          };
+        });
+
+        return {
+          ...loc._doc,
+          bids: formattedBids,
+          bidCount: activeBidCount,
+          totalBidCount,
+          acceptedBidCount,
+          rejectedBidCount,
+          underNegotiationBidCount,
+          underNegotiationCount: underNegotiationBidCount,
+          newBidsTodayCount,
+          newBidsYesterdayCount,
+          newBidsTomorrowCount,
+          newBidsThisWeekCount,
+          bidsByDateLabel,
+        };
+      })
+    );
+
+    const summary = {
+      totalLocations: locations.length,
+      totalBids: 0,
+      acceptedBidsCount: 0,
+      rejectedBidsCount: 0,
+      underNegotiationBidsCount: 0,
+      newBidsToday: 0,
+      newBidsYesterday: 0,
+      newBidsTomorrow: 0,
+      newBidsThisWeek: 0,
+    };
+
+    locationsWithBidDetails.forEach((loc) => {
+      summary.totalBids += loc.totalBidCount;
+      summary.acceptedBidsCount += loc.acceptedBidCount;
+      summary.rejectedBidsCount += loc.rejectedBidCount;
+      summary.underNegotiationBidsCount += loc.underNegotiationBidCount;
+      summary.newBidsToday += loc.newBidsTodayCount;
+      summary.newBidsYesterday += loc.newBidsYesterdayCount;
+      summary.newBidsTomorrow += loc.newBidsTomorrowCount;
+      summary.newBidsThisWeek += loc.newBidsThisWeekCount;
+    });
+
+    res.status(200).json({
+      success: true,
+      count: locationsWithBidDetails.length,
+      summary,
+      data: locationsWithBidDetails,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error fetching locations for user", error: error.message });
   }

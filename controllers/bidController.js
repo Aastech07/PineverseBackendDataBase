@@ -31,17 +31,17 @@ const isBidValid = (bid) => {
 
   let daysToAdd = 0;
   switch (bid.validityOfQuote) {
-    case '7 Days':
-      daysToAdd = 7;
+    case '1 Days':
+      daysToAdd = 1;
       break;
-    case '10 Days':
-      daysToAdd = 10;
+    case '2 Days':
+      daysToAdd = 2;
       break;
-    case '1 Month':
-      daysToAdd = 30;
+    case '3 Days':
+      daysToAdd = 3;
       break;
     default:
-      daysToAdd = 7;
+      daysToAdd = 1;
   }
 
   const expiryDate = new Date(submittedDate);
@@ -529,16 +529,25 @@ export const createBid = async (req, res) => {
     }
 
     // Validate validityOfQuote
+    // if (
+    //   !validityOfQuote ||
+    //   !["1 Days", "2 Days", "3 Days"].includes(validityOfQuote)
+    // ) {
+    //   return res.status(400).json({
+    //     message: "validityOfQuote must be '1 Days', '2 Days' or '3 Days'",
+    //     received: validityOfQuote,
+    //   });
+    // }
+    // Validate validityOfQuote
     if (
       !validityOfQuote ||
-      !["7 Days", "10 Days", "1 Month"].includes(validityOfQuote)
+      !["1 Day", "2 Days", "3 Days"].includes(validityOfQuote)
     ) {
       return res.status(400).json({
-        message: "validityOfQuote must be '7 Days', '10 Days' or '1 Month'",
+        message: "validityOfQuote must be '1 Day', '2 Days' or '3 Days'",
         received: validityOfQuote,
       });
     }
-
     // Arrays validation
     if (
       (servicesProvided && !Array.isArray(servicesProvided)) ||
@@ -587,7 +596,7 @@ export const createBid = async (req, res) => {
         phone: recipientDetails.phone,
       },
 
-      validityOfQuote: validityOfQuote || "7 Days",
+      validityOfQuote: validityOfQuote || "1 Days",
       advancePayment: Number(advancePayment) || 0,
       noteToCustomer: noteToCustomer || "",
 
@@ -882,10 +891,10 @@ export const getBidsByJob = async (req, res) => {
       return res.status(200).json({
         message: "All bids rejected. Status reset to Posted.",
         success: true,
-        count: 0,
+        count: validBids.length,
         totalFound: bids.length,
-        validCount: 0,
-        bids: [],
+        validCount: validBids.length,
+        bids: validBids,
       });
     }
 
@@ -902,7 +911,7 @@ export const getBidsByJob = async (req, res) => {
     //   bids: bidsToReturn,
     // });
 
-     return res.status(200).json({
+    return res.status(200).json({
       message: "Active bids fetched successfully for job",
       success: true,
       jobId,
@@ -2333,6 +2342,7 @@ export const updateCostBreakdown = async (req, res) => {
 
 
 // 🟢 Update Payment Fields (AdvancePaidPayment, PendingPayment, fullPayment, fullPaymentStatus)
+
 export const updatePaymentFields = async (req, res) => {
   try {
     const { bidId } = req.params;
@@ -2363,7 +2373,7 @@ export const updatePaymentFields = async (req, res) => {
     if (
       (AdvancePaidPayment !== undefined && AdvancePaidPayment < 0) ||
       (PendingPayment !== undefined && PendingPayment < 0)
-   
+
     ) {
       return res.status(400).json({
         message: "Payment values cannot be negative",
@@ -2487,9 +2497,6 @@ export default {
   updatePaymentFields,
   getPaymentFields
 };
-
-
-
 
 export const getVendorBidHistory = async (req, res) => {
   try {
