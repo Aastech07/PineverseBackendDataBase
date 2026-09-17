@@ -13,5 +13,7 @@ router.post("/createAdvancePayment", createAdvancePayment);
 // Get Advance Payments by user_id (query: ?user_id=... ya param: /:user_id)
 router.get("/getAdvancePayment", getAdvancePayments);
 router.get("/getAdvancePayment/:user_id", getAdvancePayments);
+router.get("/getAdvancePayments", getAdvancePayments);
+router.get("/getAdvancePayments/:user_id", getAdvancePayments);
 
 export default router;
